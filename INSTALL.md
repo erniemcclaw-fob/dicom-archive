@@ -1,6 +1,6 @@
 # DICOM Archive — Installation & Operations Guide
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Repository:** https://github.com/erniemcclaw-fob/dicom-archive
 
 ---
@@ -16,12 +16,13 @@
 7. [First-Time Setup in the Web UI](#7-first-time-setup-in-the-web-ui)
 8. [Connecting a Modality](#8-connecting-a-modality)
 9. [Configuring Routing Rules](#9-configuring-routing-rules)
-10. [Verifying Everything Works](#10-verifying-everything-works)
-11. [Cloud Storage (S3 / Azure)](#11-cloud-storage-s3--azure)
-12. [Troubleshooting](#12-troubleshooting)
-13. [Directory Structure](#13-directory-structure)
-14. [Ports Reference](#14-ports-reference)
-15. [Updating](#15-updating)
+10. [Multi-Site Deployments](#10-multi-site-deployments)
+11. [Verifying Everything Works](#11-verifying-everything-works)
+12. [Cloud Storage (S3 / Azure)](#12-cloud-storage-s3--azure)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Directory Structure](#14-directory-structure)
+15. [Ports Reference](#15-ports-reference)
+16. [Updating](#16-updating)
 
 ---
 
@@ -39,6 +40,9 @@ Images can then be:
 The system is intentionally DICOM-neutral after ingest — images are just files.
 DICOM is only used at the network edges (receive from modality, send to destination).
 
+Multiple ingest agents can share a single database and server, enabling multi-site
+deployments where each site has its own agent with its own AE title and routing rules.
+
 ---
 
 ## 2. Architecture
@@ -50,6 +54,8 @@ DICOM is only used at the network edges (receive from modality, send to destinat
 │   workstation, etc) │                         │  • SHA-256 checksums file   │
 └─────────────────────┘                         │  • Stores to blob storage   │
                                                 │  • Indexes in Postgres      │
+                                                │  • Registers with server    │
+                                                │  • Sends 60s heartbeats     │
                                                 │  • Notifies routing server  │
                                                 └──────────────┬──────────────┘
                                                                │
@@ -57,15 +63,18 @@ DICOM is only used at the network edges (receive from modality, send to destinat
                                                     │      Postgres        │
                                                     │  patients / exams /  │
                                                     │  series / instances  │
+                                                    │  agents              │
                                                     │  destinations/rules  │
+                                                    │  routing_log         │
                                                     └──────────┬──────────┘
                                                                │
                                                 ┌──────────────▼──────────────┐
 ┌─────────────────────┐     DICOM C-STORE      │  Server  (port 8080)        │
 │  Destination AE     │ ◄────────────────────── │  • Web management UI        │
 │  (PACS, viewer,     │                         │  • REST + WADO-RS API       │
-│   workstation)      │                         │  • Routing engine           │
-└─────────────────────┘                         │  • Queue processor          │
+│   workstation)      │                         │  • Agent registry           │
+└─────────────────────┘                         │  • Routing engine           │
+                                                │  • 30s queue processor      │
                                                 └─────────────────────────────┘
                                                                ▲
                                                                │  Browser
@@ -80,8 +89,8 @@ DICOM is only used at the network edges (receive from modality, send to destinat
 | Container | Purpose | Port |
 |-----------|---------|------|
 | `agent` | DICOM SCP — receives images from modalities | 11112 |
-| `server` | Web UI, REST API, routing engine | 8080 |
-| `postgres` | Metadata database | 5432 (internal) |
+| `server` | Web UI, REST API, agent registry, routing engine | 8080 |
+| `postgres` | Metadata and configuration database | 5432 (internal) |
 
 ---
 
@@ -134,7 +143,8 @@ cp agent/.env.example agent/.env
 ```
 
 Open `agent/.env` in a text editor. The defaults work for a basic local installation —
-you only **must** change things if you're using cloud storage. See [Section 5](#5-configuration).
+you only **must** change things if you're using cloud storage or running multiple agents.
+See [Section 5](#5-configuration).
 
 ### Step 3 — Create the data directories
 
@@ -202,7 +212,7 @@ AWS_REGION=us-east-1
 S3_BUCKET=your-dicom-archive-bucket
 ```
 
-Create the S3 bucket before starting. Enable versioning if you want extra protection.
+Create the S3 bucket before starting. Enable versioning for extra protection.
 
 #### Azure Blob Storage
 
@@ -219,8 +229,10 @@ The container will be created automatically if it doesn't exist.
 ### DICOM agent settings
 
 ```env
-# The AE title this archive presents to the network.
-# Modalities will need to know this when they configure a DICOM destination.
+# The AE title this agent presents to the network.
+# This is the agent's unique identity — modalities configure this as
+# their send destination, and routing rules can filter on it.
+# Each agent in a multi-site deployment should have a distinct AE title.
 AE_TITLE=ARCHIVE_SCP
 
 # Port to listen for incoming DICOM associations.
@@ -228,9 +240,17 @@ AE_TITLE=ARCHIVE_SCP
 LISTEN_PORT=11112
 LISTEN_HOST=0.0.0.0
 
-# Auto-routing: URL of the server container.
+# URL of the server container.
+# Required for auto-routing, agent registration, and heartbeats.
 # Leave as-is for Docker Compose — containers communicate by service name.
+# Remove or leave blank to run in file-only mode (no routing, no registration).
 ROUTER_URL=http://server:8080
+
+# Quarantine folder for files that fail validation
+QUARANTINE_PATH=./quarantine
+
+# Max file size accepted (bytes) — 0 = unlimited
+MAX_FILE_BYTES=0
 ```
 
 ---
@@ -246,7 +266,8 @@ docker compose up -d
 Docker will:
 1. Build the agent and server images (first run takes 2–3 minutes)
 2. Start Postgres and wait for it to be healthy
-3. Start the agent and server
+3. Start the server, then the agent
+4. The agent registers itself with the server automatically on startup
 
 ### Check that everything is running
 
@@ -256,10 +277,21 @@ docker compose ps
 
 Expected output:
 ```
-NAME                    STATUS          PORTS
-dicom-archive-agent-1   Up              0.0.0.0:11112->11112/tcp
-dicom-archive-server-1  Up              0.0.0.0:8080->8080/tcp
-dicom-archive-postgres-1 Up (healthy)   0.0.0.0:5432->5432/tcp
+NAME                      STATUS          PORTS
+dicom-archive-agent-1     Up              0.0.0.0:11112->11112/tcp
+dicom-archive-server-1    Up              0.0.0.0:8080->8080/tcp
+dicom-archive-postgres-1  Up (healthy)    0.0.0.0:5432->5432/tcp
+```
+
+### Confirm the agent registered
+
+```bash
+docker compose logs agent | grep -i "registered"
+```
+
+Expected:
+```
+[INFO] dicom-agent — Registered with server as [ARCHIVE_SCP]
 ```
 
 ### View logs
@@ -291,11 +323,26 @@ docker compose down
 Open a browser and go to: **http://\<your-host-ip\>:8080**
 
 You should see the DICOM Archive dashboard. On first launch everything will show zeros —
-that's normal. Follow these steps to configure the system.
+that's normal. Follow these steps in order.
 
 ---
 
-### Step 7a — Add a Destination AE
+### Step 7a — Verify the agent is registered
+
+1. Click **Agents** in the left sidebar
+2. You should see your agent listed with a 🟢 **Online** status dot
+3. The table shows the agent's AE title, hostname, storage backend, and last heartbeat time
+
+> If the agent shows as **Offline** or doesn't appear at all, check that `ROUTER_URL`
+> is set correctly in `agent/.env` and that the server container is running.
+
+> **Orphan warnings:** If any routing rules reference an AE title that has not
+> registered, a yellow warning banner will appear on this page identifying them.
+> This prevents rules from silently never matching.
+
+---
+
+### Step 7b — Add a Destination AE
 
 A **destination** is a remote DICOM system you want to forward images to
 (e.g., a PACS, a workstation, another archive, a viewing system).
@@ -323,7 +370,7 @@ A **destination** is a remote DICOM system you want to forward images to
 
 ---
 
-### Step 7b — Add a Routing Rule
+### Step 7c — Add a Routing Rule
 
 A **routing rule** defines which images should go where, and whether routing happens
 automatically or must be triggered manually.
@@ -333,25 +380,33 @@ automatically or must be triggered manually.
 3. Fill in the form:
 
    **Destinations** — tick one or more checkboxes. Images matching this rule will be
-   sent to *all* selected destinations (fan-out).
+   sent to *all* selected destinations simultaneously (fan-out). You must select
+   at least one.
 
    **Match Criteria** — all fields are optional. Leaving a field blank means "match
    everything." You can match on:
 
    | Field | Example | Notes |
    |-------|---------|-------|
-   | Modality | `MG` | Mammography. Other examples: `CT`, `MR`, `CR`, `DX` |
-   | Sending AE Title | `MAMMO_UNIT` | The AE title of the modality/source sending the image |
-   | Receiving AE Title | `ARCHIVE_SITE_A` | The AE title of the agent that accepted the image — useful in multi-site deployments where multiple agents share the same database |
+   | Modality | `MG` | Mammography. Other common values: `CT`, `MR`, `CR`, `DX` |
+   | Sending AE Title | `MAMMO_UNIT` | The AE title of the modality sending the image |
+   | Receiving Agent | *(dropdown)* | The agent that accepted the image. Populated from registered agents — see below |
    | Body Part | `BREAST` | As tagged in the DICOM header |
+
+   **Receiving Agent dropdown** — shows all agents that have registered with the server,
+   each with a 🟢 online indicator where applicable. Selecting an agent here restricts
+   the rule to images received by that specific agent. Leave as **Any agent** to match
+   regardless of which agent received the image. This is the primary mechanism for
+   per-agent routing in multi-site deployments.
 
    **Auto-route on receipt** — when this toggle is **on**, matching images are forwarded
    to the selected destinations automatically the moment they are received, with no
-   manual action required. When **off**, the rule only applies to manual routing from
-   the Studies page.
+   manual action required. This is **off by default** — you must explicitly enable it
+   per rule. When **off**, the rule only applies to manual routing from the Studies page.
 
    **Priority** — if multiple rules match the same image, lower numbers run first.
-   Use this to create specific rules (priority 10) that override general ones (priority 100).
+   Use this to create specific rules (priority 10) that take precedence over general
+   catch-all rules (priority 100).
 
 4. Click **Save Rule**
 
@@ -369,25 +424,15 @@ automatically or must be triggered manually.
 **Mirror everything to a backup archive:**
 - Name: `All images → Backup`
 - Destinations: ✓ Backup Archive
-- (leave all match fields blank — matches everything)
+- *(leave all match fields blank — catches everything)*
 - Auto-route on receipt: **ON**
 - Priority: `100`
 
-**Forward to two destinations simultaneously:**
+**Fan-out to two destinations simultaneously:**
 - Name: `MG → PACS + Backup`
 - Destinations: ✓ Main PACS  ✓ Backup Archive
 - Modality: `MG`
 - Auto-route on receipt: **ON**
-
-**Multi-site: each site agent routes to its own PACS (shared DB):**
-- Rule 1 — Name: `Site A → Site A PACS`
-  - Destinations: ✓ Site A PACS
-  - Receiving AE Title: `ARCHIVE_SITE_A`
-  - Auto-route on receipt: **ON**
-- Rule 2 — Name: `Site B → Site B PACS + Central`
-  - Destinations: ✓ Site B PACS  ✓ Central PACS
-  - Receiving AE Title: `ARCHIVE_SITE_B`
-  - Auto-route on receipt: **ON**
 
 ---
 
@@ -430,23 +475,28 @@ storescu -aec ARCHIVE_SCP <archive-host> 11112 /path/to/test.dcm
 
 ### How routing works
 
-1. An image arrives via C-STORE
-2. The agent stores it and notifies the server
-3. The server checks all enabled rules with **Auto-route on receipt = ON**
-4. For each matching rule, one routing log entry is created per destination
-5. The routing engine sends the image via C-STORE to each destination
-6. Results appear in the **Route Log**
+1. A modality sends an image via DICOM C-STORE to the agent
+2. The agent validates, checksums, and stores the image as a file
+3. The agent writes metadata to Postgres and notifies the server via `/internal/routed`
+4. The server evaluates all enabled rules with **Auto-route on receipt = ON**, matching
+   against modality, sending AE title, receiving agent AE title, and body part
+5. For each matching rule, one routing log entry is created per selected destination
+6. The routing engine sends the image to each destination via C-STORE
+7. Results (success/failure/retry) appear in the **Route Log**
 
-If the server is unavailable when an image arrives, the agent logs a warning and
-continues. The server's background queue processor checks for pending routes every
-30 seconds, so nothing is lost.
+If the server is unreachable when an image arrives, the agent logs a warning and
+continues storing. The server's background queue processor checks for pending routes
+every 30 seconds — nothing is lost.
+
+Failed routes are automatically retried up to 3 times before being marked permanently
+failed.
 
 ### Manual routing
 
 From the **Studies** page:
 1. Find the study you want to route
 2. In the **Route to…** dropdown at the end of the row, select a destination
-3. Click **▶**
+3. Click **▶** to queue all instances of that study for routing
 
 To route individual instances, drill down into a series and use the per-instance
 **Route…** dropdown.
@@ -456,22 +506,86 @@ To route individual instances, drill down into a series and use the per-instance
 Click **Route Log** in the sidebar to see:
 - Every routing attempt with timestamp
 - Status: `queued` → `sending` → `success` / `failed`
-- Number of attempts (retried up to 3 times automatically)
+- Which rule triggered the route (or "Manual" for manual routes)
+- Number of attempts
 - Error message on failure
 
 ---
 
-## 10. Verifying Everything Works
+## 10. Multi-Site Deployments
+
+Multiple ingest agents can connect to a single shared database and server. Each agent
+has its own AE title, which becomes its unique identity in the system.
+
+### Setting up a second agent
+
+1. On the second site's machine, clone the repository and create `agent/.env`
+2. Set a **distinct** AE title:
+   ```env
+   AE_TITLE=ARCHIVE_SITE_B
+   ```
+3. Point `DATABASE_URL` and `ROUTER_URL` at the shared Postgres and server:
+   ```env
+   DATABASE_URL=postgresql://dicom:changeme@<shared-server-ip>:5432/dicom_archive
+   ROUTER_URL=http://<shared-server-ip>:8080
+   ```
+4. Start only the agent container (not its own Postgres or server):
+   ```bash
+   docker compose up -d agent
+   ```
+5. The agent registers automatically. Open the web UI → **Agents** to confirm it appears
+
+### Writing per-agent routing rules
+
+Once multiple agents are registered, the **Receiving Agent** dropdown in the rule modal
+lists all known agents. Select an agent to restrict a rule to images received exclusively
+by that agent.
+
+**Example — two sites, independent routing:**
+
+| Rule | Receiving Agent | Destinations | Auto-route |
+|------|----------------|--------------|------------|
+| `Site A → Site A PACS` | ARCHIVE_SITE_A | Site A PACS | ON |
+| `Site B → Site B PACS + Central` | ARCHIVE_SITE_B | Site B PACS, Central PACS | ON |
+| `All sites → Backup` | *(any)* | Backup Archive | ON |
+
+### Agent identity and uniqueness
+
+- `ae_title` is enforced as **unique** in the `agents` table
+- If two agents are intentionally configured with the same AE title (e.g., an
+  active-passive HA pair), they share a registry entry and routing rules apply to both —
+  which is the correct and expected behavior
+- If two agents accidentally share an AE title, the **Agents** page will show only one
+  entry with a single `last_seen` timestamp, making the collision visible
+- Routing rules whose **Receiving Agent** references an AE title with no registered
+  agent are flagged with a ⚠ **orphan warning** on the Agents page — they will never
+  match until an agent with that identity connects
+
+---
+
+## 11. Verifying Everything Works
 
 ### End-to-end test checklist
 
 - [ ] `docker compose ps` shows all three containers as **Up**
 - [ ] Web UI loads at `http://<host>:8080`
+- [ ] **Agents** page shows your agent with 🟢 Online status
 - [ ] C-ECHO from the web UI to a destination returns success
 - [ ] Send a test DICOM file from a modality or `storescu`
 - [ ] Agent log shows `✓ Stored <blob-key>`
 - [ ] Study appears in the **Studies** page of the web UI
 - [ ] If auto-routing is configured: Route Log shows a `success` entry
+
+### Check the agent registered
+
+```bash
+docker compose logs agent | grep -i "register"
+```
+
+Expected:
+```
+[INFO] dicom-agent — Registered with server as [ARCHIVE_SCP]
+```
 
 ### Check the agent received an image
 
@@ -487,6 +601,7 @@ Expected:
 ### Check the database directly (optional)
 
 ```bash
+# List recent studies
 docker compose exec postgres psql -U dicom -d dicom_archive -c \
   "SELECT p.patient_id, e.study_date, e.modality, COUNT(i.id) AS images
    FROM patients p
@@ -495,11 +610,22 @@ docker compose exec postgres psql -U dicom -d dicom_archive -c \
    JOIN instances i ON i.series_id = s.id
    GROUP BY p.patient_id, e.study_date, e.modality
    ORDER BY e.study_date DESC LIMIT 10;"
+
+# List registered agents
+docker compose exec postgres psql -U dicom -d dicom_archive -c \
+  "SELECT ae_title, host, instances_received, last_seen FROM agents;"
+
+# Check routing log
+docker compose exec postgres psql -U dicom -d dicom_archive -c \
+  "SELECT rl.status, d.name AS destination, rl.attempts, rl.last_error
+   FROM routing_log rl
+   JOIN ae_destinations d ON d.id = rl.destination_id
+   ORDER BY rl.queued_at DESC LIMIT 10;"
 ```
 
 ---
 
-## 11. Cloud Storage (S3 / Azure)
+## 12. Cloud Storage (S3 / Azure)
 
 ### AWS S3 setup
 
@@ -516,8 +642,8 @@ AWS_REGION=us-east-1
 S3_BUCKET=your-bucket-name
 ```
 
-5. Set the same variables in `docker-compose.yml` under the `server` service
-   (the server needs to read blobs back for retrieval and routing)
+5. Set the same variables in `docker-compose.yml` under the `server` service —
+   the server needs blob access for retrieval and routing
 
 ### Azure Blob Storage setup
 
@@ -538,7 +664,7 @@ AZURE_CONTAINER=dicom-archive
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 ### Agent won't start
 
@@ -549,9 +675,24 @@ docker compose logs agent
 ```
 
 Common causes:
-- Port 11112 already in use on the host → change `LISTEN_PORT` in `agent/.env`
-  and update the port mapping in `docker-compose.yml`
+- Port 11112 already in use → change `LISTEN_PORT` in `agent/.env` and update
+  the port mapping in `docker-compose.yml`
 - Postgres not yet healthy → wait 10–15 seconds and retry
+
+---
+
+### Agent not appearing on the Agents page
+
+**Symptom:** Agent starts but doesn't show up in the web UI
+
+```bash
+docker compose logs agent | grep -i "register\|router\|warn"
+```
+
+Common causes:
+- `ROUTER_URL` not set or incorrect in `agent/.env`
+- Server container not yet started when agent started → `docker compose restart agent`
+- Network issue between agent and server containers
 
 ---
 
@@ -576,8 +717,23 @@ Checklist:
 docker compose logs server
 ```
 
-- If server shows a DB connection error, Postgres may have restarted → `docker compose restart server`
+- If server shows a DB connection error, Postgres may have restarted →
+  `docker compose restart server`
 - Check `DATABASE_URL` is set correctly in `docker-compose.yml`
+
+---
+
+### Routing rules not firing automatically
+
+**Symptom:** Images arrive but Route Log shows no activity
+
+Checklist:
+1. **Agents page** — is the agent shown as Online? If not, `ROUTER_URL` is missing or wrong
+2. **Rules page** — does the rule have **Auto-route on receipt** toggled ON?
+3. **Rules page** — does the rule's Receiving Agent match the agent's AE title?
+4. Check for orphan warnings on the Agents page — a rule referencing an unregistered
+   AE title will never match
+5. Check server logs: `docker compose logs server | grep -i "route\|rule"`
 
 ---
 
@@ -585,22 +741,36 @@ docker compose logs server
 
 **Symptom:** Route Log shows `failed` status
 
-1. Click the error message in the Route Log to see the full error
+1. Check the error message in the Route Log
 2. Common causes:
    - Destination host/port/AE title is wrong → edit the destination and re-test echo
-   - Destination system is offline → retry will happen automatically (up to 3 attempts)
-   - Destination AE title doesn't accept our calling AE title → check destination's allowed callers list
+   - Destination system is offline → retried automatically up to 3 times
+   - Destination AE title doesn't accept our calling AE title → check the
+     destination system's allowed callers list
+
+---
+
+### Orphaned routing rules warning
+
+**Symptom:** Yellow warning banner on the Agents page
+
+A routing rule has a **Receiving Agent** set to an AE title that has never registered.
+The rule will never match in its current state.
+
+Resolution options:
+1. Start an agent configured with that AE title — it will register on startup
+2. Edit the rule and change the Receiving Agent to a registered agent or **Any agent**
+3. Delete the rule if it is no longer needed
 
 ---
 
 ### Files in quarantine
 
 Images land in `data/quarantine/` when they fail validation. Common reasons:
-- Missing required DICOM tags (no SOPInstanceUID, StudyInstanceUID, or SeriesInstanceUID)
+- Missing required DICOM tags (SOPInstanceUID, StudyInstanceUID, or SeriesInstanceUID)
 - No pixel data in the file
 - File exceeded `MAX_FILE_BYTES` limit
 
-To inspect a quarantined file:
 ```bash
 # List quarantined files
 ls data/quarantine/
@@ -624,7 +794,7 @@ docker compose up -d            # restart fresh
 
 ---
 
-## 13. Directory Structure
+## 14. Directory Structure
 
 ```
 dicom-archive/
@@ -656,12 +826,12 @@ dicom-archive/
 
 ---
 
-## 14. Ports Reference
+## 15. Ports Reference
 
 | Port | Protocol | Service | Direction | Notes |
 |------|----------|---------|-----------|-------|
 | 11112 | TCP | DICOM SCP (agent) | Inbound from modalities | Must be reachable from modality network |
-| 8080 | TCP | Web UI + REST API (server) | Inbound from browsers | Restrict to internal network |
+| 8080 | TCP | Web UI + REST API (server) | Inbound from browsers/agents | Restrict to internal network |
 | 5432 | TCP | Postgres | Internal only | Not exposed externally by default |
 
 > **Security note:** Port 8080 has no authentication in the current version.
@@ -670,7 +840,7 @@ dicom-archive/
 
 ---
 
-## 15. Updating
+## 16. Updating
 
 To pull the latest code and rebuild:
 
@@ -681,20 +851,25 @@ docker compose build --no-cache
 docker compose up -d
 ```
 
-The database schema is updated automatically on startup. Your data is preserved.
+The database schema updates automatically on startup — new columns are added
+non-destructively and existing data is preserved. Agents re-register automatically
+when they restart.
 
 ---
 
 ## Quick Reference Card
 
 ```
-Start:    docker compose up -d
-Stop:     docker compose down
-Logs:     docker compose logs -f agent
-          docker compose logs -f server
-Status:   docker compose ps
-Web UI:   http://<host>:8080
-DICOM:    <host>:11112  AE: ARCHIVE_SCP
+Start:     docker compose up -d
+Stop:      docker compose down
+Logs:      docker compose logs -f agent
+           docker compose logs -f server
+Status:    docker compose ps
+Web UI:    http://<host>:8080
+DICOM:     <host>:11112  AE: ARCHIVE_SCP
+
+Confirm agent registered:
+  docker compose logs agent | grep -i register
 
 Test echo (dcmtk):
   echoscu -aec ARCHIVE_SCP <host> 11112
@@ -704,6 +879,12 @@ Send test file (dcmtk):
 
 DB shell:
   docker compose exec postgres psql -U dicom -d dicom_archive
+
+List registered agents (DB):
+  SELECT ae_title, host, instances_received, last_seen FROM agents;
+
+Check routing log (DB):
+  SELECT status, attempts, last_error FROM routing_log ORDER BY queued_at DESC LIMIT 10;
 ```
 
 ---
