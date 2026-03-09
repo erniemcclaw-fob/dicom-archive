@@ -17,9 +17,14 @@ services:
       DATABASE_URL: postgresql://dicom:changeme@postgres:5432/dicom_archive
       STORAGE_BACKEND: local
       LOCAL_STORAGE_PATH: /data/received
+      # Notify the server after each store so on_receive rules fire immediately.
+      # Remove this line to rely solely on the 30s queue processor.
+      ROUTER_URL: http://server:8080
     depends_on:
       postgres:
         condition: service_healthy
+      server:
+        condition: service_started
 
   # ── Server — REST API + Web UI + Routing engine ──────────────────────────────
   server:

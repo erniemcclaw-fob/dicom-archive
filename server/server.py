@@ -274,13 +274,13 @@ def echo_destination(dest_id: int):
 
 class RuleIn(BaseModel):
     name:             str
-    destination_id:   int
+    destination_ids:  list[int]          # one or more — fan-out supported
     priority:         int  = 100
     enabled:          bool = True
     match_modality:   Optional[str] = None
     match_ae_title:   Optional[str] = None
     match_body_part:  Optional[str] = None
-    on_receive:       bool = True
+    on_receive:       bool = False        # opt-in — off by default
     description:      Optional[str] = None
 
 @app.get("/api/rules")
@@ -289,8 +289,10 @@ def list_rules():
 
 @app.post("/api/rules", status_code=201)
 def create_rule(body: RuleIn):
+    if not body.destination_ids:
+        raise HTTPException(400, "At least one destination is required")
     return dict(db.create_rule(
-        body.name, body.destination_id, body.priority,
+        body.name, body.destination_ids, body.priority,
         body.match_modality, body.match_ae_title,
         body.match_body_part, body.on_receive, body.description
     ))
@@ -301,18 +303,47 @@ def get_rule(rule_id: int):
 
 @app.put("/api/rules/{rule_id}")
 def update_rule(rule_id: int, body: RuleIn):
+    if not body.destination_ids:
+        raise HTTPException(400, "At least one destination is required")
     row = db.update_rule(rule_id,
-        name=body.name, destination_id=body.destination_id,
-        priority=body.priority, enabled=body.enabled,
-        match_modality=body.match_modality, match_ae_title=body.match_ae_title,
-        match_body_part=body.match_body_part, on_receive=body.on_receive,
-        description=body.description
+        destination_ids=body.destination_ids,
+        name=body.name, priority=body.priority,
+        enabled=body.enabled, match_modality=body.match_modality,
+        match_ae_title=body.match_ae_title, match_body_part=body.match_body_part,
+        on_receive=body.on_receive, description=body.description
     )
     return row_or_404(row)
 
 @app.delete("/api/rules/{rule_id}", status_code=204)
 def delete_rule(rule_id: int):
     db.delete_rule(rule_id)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  INTERNAL — called by the ingest agent after each successful store
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class IngestNotification(BaseModel):
+    instance_id:  int
+    instance_uid: str
+    modality:     Optional[str] = None
+    sending_ae:   Optional[str] = None
+    body_part:    Optional[str] = None
+
+@app.post("/internal/routed")
+def on_instance_received(body: IngestNotification, background_tasks: BackgroundTasks):
+    """
+    Called by the ingest agent immediately after storing an instance.
+    Evaluates on_receive routing rules and kicks off matching routes.
+    If this endpoint is unreachable the queue processor retries within 30s.
+    """
+    queued = router.evaluate_and_queue(
+        body.instance_id, body.modality or "",
+        body.sending_ae or "", body.body_part or ""
+    )
+    if queued:
+        background_tasks.add_task(router.process_queue)
+    return {"ok": True, "routes_queued": queued}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

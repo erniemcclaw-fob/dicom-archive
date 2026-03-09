@@ -24,6 +24,10 @@ from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()
 
+import urllib.request
+import urllib.error
+import json as _json
+
 import pydicom
 from pynetdicom import AE, evt, AllStoragePresentationContexts, ALL_TRANSFER_SYNTAXES
 from pynetdicom.sop_class import Verification
@@ -50,6 +54,10 @@ LISTEN_PORT   = int(os.getenv("LISTEN_PORT", "11112"))
 LISTEN_HOST   = os.getenv("LISTEN_HOST",  "0.0.0.0")
 QUARANTINE    = Path(os.getenv("QUARANTINE_PATH", "./quarantine"))
 MAX_BYTES     = int(os.getenv("MAX_FILE_BYTES", "0"))  # 0 = unlimited
+# Optional: URL of the server's internal notification endpoint.
+# When set, the agent pings it after each successful store so on_receive
+# routing rules fire immediately rather than waiting for the 30s queue poll.
+ROUTER_URL    = os.getenv("ROUTER_URL", "").rstrip("/")  # e.g. http://server:8080
 
 QUARANTINE.mkdir(parents=True, exist_ok=True)
 
@@ -156,6 +164,17 @@ def handle_store(event):
                     logger.warning(f"  Duplicate instance {instance_uid} — already in DB, blob overwritten")
                 else:
                     logger.info(f"  DB record id={inst_id}")
+
+                # ── Notify routing server (if configured) ─────────────────
+                if inst_id and ROUTER_URL:
+                    _notify_router(
+                        instance_id  = inst_id,
+                        instance_uid = instance_uid,
+                        modality     = str(getattr(ds, "Modality", "") or ""),
+                        sending_ae   = sending_ae,
+                        body_part    = str(getattr(ds, "BodyPartExamined", "") or ""),
+                    )
+
             except Exception as db_err:
                 # DB failure is logged but does NOT fail the C-STORE —
                 # the file is safely in blob storage; DB can be repaired later.
@@ -181,6 +200,44 @@ def _quarantine(src_path: str, uid: str, reason: str):
         logger.warning(f"  → Quarantined {dest}  reason: {reason}")
     except Exception as e:
         logger.error(f"  Could not quarantine {src_path}: {e}")
+
+
+# ── Router notification ───────────────────────────────────────────────────────
+
+def _notify_router(instance_id: int, instance_uid: str,
+                   modality: str, sending_ae: str, body_part: str):
+    """
+    POST to the server's /internal/routed endpoint so on_receive routing
+    rules fire immediately. Non-blocking best-effort — failure is logged
+    but never propagates to the C-STORE response.
+    The 30-second queue processor on the server is always the safety net.
+    """
+    if not ROUTER_URL:
+        return
+    payload = _json.dumps({
+        "instance_id":  instance_id,
+        "instance_uid": instance_uid,
+        "modality":     modality,
+        "sending_ae":   sending_ae,
+        "body_part":    body_part,
+    }).encode()
+    try:
+        req = urllib.request.Request(
+            f"{ROUTER_URL}/internal/routed",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            result = _json.loads(resp.read())
+            if result.get("routes_queued", 0):
+                logger.info(
+                    f"  Router notified — {result['routes_queued']} route(s) triggered"
+                )
+    except urllib.error.URLError as e:
+        logger.warning(f"  Router notification failed (queue will retry): {e}")
+    except Exception as e:
+        logger.warning(f"  Router notification error: {e}")
 
 
 # ── C-ECHO handler (ping/verification) ───────────────────────────────────────

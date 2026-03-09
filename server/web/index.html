@@ -280,18 +280,24 @@
       <label>Rule Name *</label>
       <input type="text" id="ruleName" placeholder="Forward all MG to PACS">
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Priority <span class="text-muted">(lower = higher)</span></label>
-        <input type="number" id="rulePriority" value="100" min="1">
-      </div>
-      <div class="form-group">
-        <label>Destination *</label>
-        <select id="ruleDest"></select>
-      </div>
+
+    <!-- Destinations — multi-select with checkboxes -->
+    <div class="form-group">
+      <label>Destinations * <span class="text-muted" style="font-weight:400">(select one or more — fan-out supported)</span></label>
+      <div id="ruleDestList" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:10px;display:flex;flex-direction:column;gap:8px;max-height:160px;overflow-y:auto"></div>
+      <div class="form-hint" id="ruleDestHint" style="color:var(--red);display:none">Select at least one destination</div>
     </div>
+
+    <div class="form-group">
+      <label>Priority <span class="text-muted" style="font-weight:400">(lower number = evaluated first)</span></label>
+      <input type="number" id="rulePriority" value="100" min="1">
+    </div>
+
+    <!-- Match criteria -->
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em">Match Criteria <span style="font-weight:400">(leave blank = match all)</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em">
+        Match Criteria <span style="font-weight:400;text-transform:none">(leave blank = match everything)</span>
+      </div>
       <div class="form-row">
         <div class="form-group" style="margin:0">
           <label>Modality</label>
@@ -307,13 +313,27 @@
         <input type="text" id="ruleBodyPart" placeholder="BREAST" style="text-transform:uppercase">
       </div>
     </div>
-    <div class="form-check mb-4">
-      <label class="toggle"><input type="checkbox" id="ruleOnReceive" checked><span class="toggle-slider"></span></label>
-      <span style="font-size:13px">Route automatically on receipt</span>
+
+    <!-- Auto-route toggle — prominent, with explanation -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
+      <div class="flex items-center gap-2" style="justify-content:space-between">
+        <div>
+          <div style="font-size:13px;font-weight:600">Auto-route on receipt</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">
+            When enabled, matching images are forwarded to selected destinations<br>
+            immediately after ingest — no manual action needed.
+          </div>
+        </div>
+        <label class="toggle" style="flex-shrink:0">
+          <input type="checkbox" id="ruleOnReceive">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
     </div>
+
     <div class="form-check mb-4">
       <label class="toggle"><input type="checkbox" id="ruleEnabled" checked><span class="toggle-slider"></span></label>
-      <span style="font-size:13px">Enabled</span>
+      <span style="font-size:13px">Rule enabled</span>
     </div>
     <div class="form-group">
       <label>Description</label>
@@ -750,6 +770,12 @@ async function loadRules() {
     if (r.match_ae_title)  chips.push(`AE: ${r.match_ae_title}`);
     if (r.match_body_part) chips.push(`Body: ${r.match_body_part}`);
 
+    // destinations is a JSON array from the DB aggregation
+    const dests = typeof r.destinations === 'string' ? JSON.parse(r.destinations) : (r.destinations || []);
+    const destHtml = dests.length
+      ? dests.map(d => `<div style="font-size:12px"><strong>${esc(d.name)}</strong> <span class="font-mono text-muted">${d.ae_title}</span>${!d.enabled?' <span class="badge badge-muted">disabled</span>':''}</div>`).join('')
+      : '<span class="text-muted" style="font-size:12px">—</span>';
+
     return `<tr>
       <td class="font-mono" style="text-align:center">${r.priority}</td>
       <td>
@@ -759,13 +785,14 @@ async function loadRules() {
       <td>
         ${chips.length
           ? `<div class="match-chips">${chips.map(c=>`<span class="chip">${c}</span>`).join('')}</div>`
-          : '<span class="text-muted" style="font-size:12px">All</span>'}
+          : '<span class="badge badge-green" style="font-size:11px">All images</span>'}
       </td>
-      <td>
-        <div style="font-weight:500">${esc(r.destination_name||'—')}</div>
-        <div class="font-mono text-muted">${r.destination_ae||''}</div>
+      <td>${destHtml}</td>
+      <td style="text-align:center">
+        ${r.on_receive
+          ? '<span class="badge badge-green">Auto</span>'
+          : '<span class="badge badge-muted">Manual</span>'}
       </td>
-      <td style="text-align:center">${r.on_receive ? '✓' : '—'}</td>
       <td style="text-align:center">
         <label class="toggle">
           <input type="checkbox" ${r.enabled?'checked':''} onchange="toggleRule(${r.id}, this.checked)">
@@ -782,36 +809,69 @@ async function loadRules() {
   }).join('');
 }
 
+function renderRuleDestList(selectedIds = []) {
+  const list = document.getElementById('ruleDestList');
+  if (!state.destinations.length) {
+    list.innerHTML = '<span class="text-muted" style="font-size:12px">No destinations configured yet</span>';
+    return;
+  }
+  list.innerHTML = state.destinations.map(d => `
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:4px 0">
+      <input type="checkbox" value="${d.id}" ${selectedIds.includes(d.id)?'checked':''}
+             style="width:16px;height:16px;flex-shrink:0"
+             onchange="validateRuleDests()">
+      <span>
+        <strong>${esc(d.name)}</strong>
+        <span class="font-mono text-muted" style="margin-left:6px">${d.ae_title} · ${d.host}:${d.port}</span>
+        ${!d.enabled?'<span class="badge badge-muted" style="margin-left:4px">disabled</span>':''}
+      </span>
+    </label>`).join('');
+}
+
+function getSelectedDestIds() {
+  return [...document.querySelectorAll('#ruleDestList input[type=checkbox]:checked')]
+    .map(el => parseInt(el.value));
+}
+
+function validateRuleDests() {
+  const hint = document.getElementById('ruleDestHint');
+  hint.style.display = getSelectedDestIds().length ? 'none' : 'block';
+}
+
 function openRuleModal(id = null) {
   state.editingRule = id;
   document.getElementById('ruleModalTitle').textContent = id ? 'Edit Rule' : 'New Routing Rule';
-  const destSel = document.getElementById('ruleDest');
-  destSel.innerHTML = state.destinations.map(d => `<option value="${d.id}">${d.name} [${d.ae_title}]</option>`).join('');
+  document.getElementById('ruleDestHint').style.display = 'none';
 
   if (id) {
     const r = state.rules.find(x => x.id === id);
-    document.getElementById('ruleName').value      = r.name;
-    document.getElementById('rulePriority').value  = r.priority;
-    document.getElementById('ruleDest').value      = r.destination_id;
-    document.getElementById('ruleModality').value  = r.match_modality || '';
-    document.getElementById('ruleAE').value        = r.match_ae_title || '';
-    document.getElementById('ruleBodyPart').value  = r.match_body_part || '';
+    const dests = typeof r.destinations === 'string' ? JSON.parse(r.destinations) : (r.destinations || []);
+    const selectedIds = dests.map(d => d.id);
+    renderRuleDestList(selectedIds);
+    document.getElementById('ruleName').value        = r.name;
+    document.getElementById('rulePriority').value    = r.priority;
+    document.getElementById('ruleModality').value    = r.match_modality || '';
+    document.getElementById('ruleAE').value          = r.match_ae_title || '';
+    document.getElementById('ruleBodyPart').value    = r.match_body_part || '';
     document.getElementById('ruleOnReceive').checked = r.on_receive;
     document.getElementById('ruleEnabled').checked   = r.enabled;
-    document.getElementById('ruleDesc').value      = r.description || '';
+    document.getElementById('ruleDesc').value        = r.description || '';
   } else {
-    ['ruleName','ruleModality','ruleAE','ruleBodyPart','ruleDesc'].forEach(i => document.getElementById(i).value='');
-    document.getElementById('rulePriority').value = '100';
-    document.getElementById('ruleOnReceive').checked = true;
+    renderRuleDestList([]);
+    ['ruleName','ruleModality','ruleAE','ruleBodyPart','ruleDesc'].forEach(i => document.getElementById(i).value = '');
+    document.getElementById('rulePriority').value    = '100';
+    document.getElementById('ruleOnReceive').checked = false;
     document.getElementById('ruleEnabled').checked   = true;
   }
   openModal('ruleModal');
 }
 
 async function saveRule() {
+  const destIds = getSelectedDestIds();
+  if (!destIds.length) { validateRuleDests(); return toast('Select at least one destination', 'error'); }
   const body = {
     name:            document.getElementById('ruleName').value.trim(),
-    destination_id:  parseInt(document.getElementById('ruleDest').value),
+    destination_ids: destIds,
     priority:        parseInt(document.getElementById('rulePriority').value),
     enabled:         document.getElementById('ruleEnabled').checked,
     match_modality:  document.getElementById('ruleModality').value.trim().toUpperCase() || null,
