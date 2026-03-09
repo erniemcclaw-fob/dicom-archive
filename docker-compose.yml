@@ -1,20 +1,45 @@
 version: "3.9"
 
 services:
+
+  # ── Ingest agent — accepts DICOM C-STORE from modalities ────────────────────
   agent:
     build: ./agent
     restart: unless-stopped
     ports:
-      - "11112:11112"
+      - "11112:11112"      # DICOM port — open to modality network
     volumes:
       - ./data/received:/data/received
       - ./data/quarantine:/data/quarantine
     env_file:
       - ./agent/.env
+    environment:
+      DATABASE_URL: postgresql://dicom:changeme@postgres:5432/dicom_archive
+      STORAGE_BACKEND: local
+      LOCAL_STORAGE_PATH: /data/received
     depends_on:
       postgres:
         condition: service_healthy
 
+  # ── Server — REST API + Web UI + Routing engine ──────────────────────────────
+  server:
+    build: ./server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"        # Web UI + API — expose to internal network only
+    volumes:
+      - ./data/received:/data/received   # shared with agent for local storage
+    environment:
+      DATABASE_URL: postgresql://dicom:changeme@postgres:5432/dicom_archive
+      STORAGE_BACKEND: local
+      LOCAL_STORAGE_PATH: /data/received
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Postgres ──────────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped

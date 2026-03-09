@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DICOM Archive</title>
+  <style>
+    :root {
+      --bg: #0b0f1a; --surface: #131825; --surface2: #1c2235;
+      --border: #252d45; --accent: #4f8ef7; --accent2: #a78bfa;
+      --green: #34d399; --amber: #fbbf24; --red: #f87171;
+      --text: #e2e8f0; --muted: #64748b; --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; }
+
+    /* Layout */
+    .app { display: flex; min-height: 100vh; }
+    .sidebar { width: 230px; background: var(--surface); border-right: 1px solid var(--border); padding: 24px 0; display: flex; flex-direction: column; flex-shrink: 0; position: sticky; top: 0; height: 100vh; }
+    .main { flex: 1; padding: 32px; overflow-y: auto; min-width: 0; }
+    .logo { padding: 0 20px 28px; font-size: 17px; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+    .logo-icon { font-size: 22px; }
+    .nav-section { padding: 8px 16px 4px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; cursor: pointer; color: var(--muted); font-size: 13px; transition: all 0.15s; border-right: 2px solid transparent; }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: var(--surface2); color: var(--accent); border-right-color: var(--accent); }
+    .nav-item .icon { font-size: 15px; width: 20px; text-align: center; }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .badge-blue   { background: rgba(79,142,247,0.15); color: var(--accent); }
+    .badge-green  { background: rgba(52,211,153,0.15); color: var(--green); }
+    .badge-amber  { background: rgba(251,191,36,0.15); color: var(--amber); }
+    .badge-red    { background: rgba(248,113,113,0.15); color: var(--red); }
+    .badge-purple { background: rgba(167,139,250,0.15); color: var(--accent2); }
+    .badge-muted  { background: rgba(100,116,139,0.15); color: var(--muted); }
+
+    /* Page header */
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    .page-title { font-size: 20px; font-weight: 700; }
+
+    /* Buttons */
+    .btn { padding: 7px 14px; border-radius: 7px; border: none; cursor: pointer; font-weight: 500; font-size: 13px; transition: all 0.15s; white-space: nowrap; }
+    .btn-primary  { background: var(--accent); color: #fff; }
+    .btn-primary:hover  { background: #6fa3f9; }
+    .btn-secondary{ background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover{ background: var(--border); }
+    .btn-danger   { background: transparent; color: var(--red); border: 1px solid var(--red); }
+    .btn-danger:hover { background: var(--red); color: #fff; }
+    .btn-green    { background: var(--green); color: #000; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-icon { background: transparent; border: none; cursor: pointer; color: var(--muted); font-size: 15px; padding: 4px; border-radius: 4px; }
+    .btn-icon:hover { color: var(--text); background: var(--surface2); }
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* Stat cards */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+    .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .stat-value { font-size: 28px; font-weight: 700; }
+    .stat-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    /* Table */
+    .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 500px; }
+    th { padding: 11px 14px; text-align: left; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); background: var(--surface2); white-space: nowrap; }
+    td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(79,142,247,0.04); cursor: pointer; }
+    .no-hover tr:hover td { background: none; cursor: default; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
+    .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 20px; }
+    .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+    /* Forms */
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
+    input, select, textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px; color: var(--text); font-size: 14px; outline: none; transition: border-color 0.15s; font-family: inherit; }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath fill='%2364748b' d='M5 6L0 0h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 28px; appearance: none; }
+    select option { background: #1c2235; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-check { display: flex; align-items: center; gap: 8px; }
+    .form-check input { width: 16px; height: 16px; flex-shrink: 0; }
+    .form-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    /* Search bar */
+    .search-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .search-bar input, .search-bar select { width: auto; flex: 1; min-width: 120px; font-size: 13px; }
+
+    /* Breadcrumb */
+    .breadcrumb { font-size: 12px; color: var(--muted); margin-bottom: 16px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .breadcrumb a { color: var(--accent); cursor: pointer; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .breadcrumb .sep { color: var(--border); }
+
+    /* Toast */
+    .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+    .toast { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 11px 15px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); animation: slideIn 0.2s ease; max-width: 320px; }
+    .toast.success { border-left: 3px solid var(--green); }
+    .toast.error   { border-left: 3px solid var(--red); }
+    .toast.info    { border-left: 3px solid var(--accent); }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+    .empty .icon { font-size: 36px; margin-bottom: 10px; }
+    .empty p { font-size: 15px; }
+
+    /* Status dot */
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .status-dot.green  { background: var(--green); }
+    .status-dot.red    { background: var(--red); }
+    .status-dot.amber  { background: var(--amber); }
+    .status-dot.muted  { background: var(--muted); }
+
+    /* Toggle */
+    .toggle { position: relative; display: inline-flex; width: 36px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 99px; cursor: pointer; transition: 0.2s; }
+    .toggle-slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: 0.2s; }
+    .toggle input:checked + .toggle-slider { background: var(--green); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+    /* Rule match chips */
+    .match-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+    .chip { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 7px; font-size: 11px; color: var(--muted); }
+
+    /* Route destination select in study row */
+    .route-select { width: auto; font-size: 12px; padding: 4px 28px 4px 8px; }
+
+    .hidden { display: none !important; }
+    .flex { display: flex; }
+    .gap-2 { gap: 8px; }
+    .items-center { align-items: center; }
+    .ml-auto { margin-left: auto; }
+    .text-muted { color: var(--muted); }
+    .text-green { color: var(--green); }
+    .text-red   { color: var(--red); }
+    .font-mono  { font-variant-numeric: tabular-nums; font-family: monospace; font-size: 12px; }
+    .mb-4 { margin-bottom: 16px; }
+    .mt-2 { margin-top: 8px; }
+    .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo"><span class="logo-icon">🏥</span> DICOM Archive</div>
+    <div class="nav-section">Browse</div>
+    <div class="nav-item active" data-page="dashboard"><span class="icon">📊</span> Dashboard</div>
+    <div class="nav-item" data-page="studies"><span class="icon">🩻</span> Studies</div>
+    <div class="nav-section" style="margin-top:8px">Routing</div>
+    <div class="nav-item" data-page="destinations"><span class="icon">📡</span> Destinations</div>
+    <div class="nav-item" data-page="rules"><span class="icon">⚙️</span> Rules</div>
+    <div class="nav-item" data-page="routelog"><span class="icon">📜</span> Route Log</div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- ── Dashboard ── -->
+    <div id="page-dashboard">
+      <div class="page-header">
+        <div class="page-title">Dashboard</div>
+        <button class="btn btn-secondary" onclick="loadDashboard()">↻ Refresh</button>
+      </div>
+      <div class="stat-grid" id="dashStats"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="dashPanels"></div>
+    </div>
+
+    <!-- ── Studies ── -->
+    <div id="page-studies" class="hidden">
+      <div class="page-header">
+        <div class="page-title">Studies</div>
+      </div>
+      <div class="breadcrumb" id="studiesBreadcrumb"></div>
+      <div id="studiesView"></div>
+    </div>
+
+    <!-- ── Destinations ── -->
+    <div id="page-destinations" class="hidden">
+      <div class="page-header">
+        <div class="page-title">AE Destinations</div>
+        <button class="btn btn-primary" onclick="openDestModal()">+ Add Destination</button>
+      </div>
+      <div class="table-wrap no-hover">
+        <table>
+          <thead><tr><th>Name</th><th>AE Title</th><th>Host</th><th>Port</th><th>Status</th><th></th></tr></thead>
+          <tbody id="destTable"></tbody>
+        </table>
+      </div>
+      <div class="empty hidden" id="destEmpty"><div class="icon">📡</div><p>No destinations yet</p></div>
+    </div>
+
+    <!-- ── Routing Rules ── -->
+    <div id="page-rules" class="hidden">
+      <div class="page-header">
+        <div class="page-title">Routing Rules</div>
+        <button class="btn btn-primary" onclick="openRuleModal()">+ Add Rule</button>
+      </div>
+      <div class="table-wrap no-hover">
+        <table>
+          <thead><tr><th>Priority</th><th>Name</th><th>Match</th><th>Destination</th><th>On Receive</th><th>Enabled</th><th></th></tr></thead>
+          <tbody id="rulesTable"></tbody>
+        </table>
+      </div>
+      <div class="empty hidden" id="rulesEmpty"><div class="icon">⚙️</div><p>No rules yet</p></div>
+    </div>
+
+    <!-- ── Route Log ── -->
+    <div id="page-routelog" class="hidden">
+      <div class="page-header">
+        <div class="page-title">Route Log</div>
+        <button class="btn btn-secondary" onclick="loadRouteLog()">↻ Refresh</button>
+      </div>
+      <div class="table-wrap no-hover">
+        <table>
+          <thead><tr><th>Time</th><th>Instance</th><th>Destination</th><th>Rule</th><th>Status</th><th>Attempts</th><th>Error</th></tr></thead>
+          <tbody id="routeLogTable"></tbody>
+        </table>
+      </div>
+      <div class="empty hidden" id="routeLogEmpty"><div class="icon">📜</div><p>No routing activity yet</p></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toasts -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ══════ MODALS ══════ -->
+<div id="modalOverlay" class="modal-overlay hidden" onclick="closeModal(event)">
+
+  <!-- Destination Modal -->
+  <div class="modal hidden" id="destModal">
+    <div class="modal-title" id="destModalTitle">New Destination</div>
+    <div class="form-group">
+      <label>Friendly Name *</label>
+      <input type="text" id="destName" placeholder="Main PACS">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>AE Title *</label>
+        <input type="text" id="destAE" placeholder="PACS_SCP" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label>Port *</label>
+        <input type="number" id="destPort" value="104" min="1" max="65535">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Host / IP *</label>
+      <input type="text" id="destHost" placeholder="192.168.1.100">
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <input type="text" id="destDesc" placeholder="Optional notes">
+    </div>
+    <div class="form-check">
+      <label class="toggle"><input type="checkbox" id="destEnabled" checked><span class="toggle-slider"></span></label>
+      <span style="font-size:13px">Enabled</span>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-secondary" onclick="testEcho()" id="echoBtn">🔔 Test Echo</button>
+      <button class="btn btn-primary" onclick="saveDest()">Save</button>
+    </div>
+  </div>
+
+  <!-- Rule Modal -->
+  <div class="modal hidden" id="ruleModal">
+    <div class="modal-title" id="ruleModalTitle">New Routing Rule</div>
+    <div class="form-group">
+      <label>Rule Name *</label>
+      <input type="text" id="ruleName" placeholder="Forward all MG to PACS">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Priority <span class="text-muted">(lower = higher)</span></label>
+        <input type="number" id="rulePriority" value="100" min="1">
+      </div>
+      <div class="form-group">
+        <label>Destination *</label>
+        <select id="ruleDest"></select>
+      </div>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em">Match Criteria <span style="font-weight:400">(leave blank = match all)</span></div>
+      <div class="form-row">
+        <div class="form-group" style="margin:0">
+          <label>Modality</label>
+          <input type="text" id="ruleModality" placeholder="MG" style="text-transform:uppercase">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Sending AE Title</label>
+          <input type="text" id="ruleAE" placeholder="MAMMO_UNIT">
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:12px;margin-bottom:0">
+        <label>Body Part</label>
+        <input type="text" id="ruleBodyPart" placeholder="BREAST" style="text-transform:uppercase">
+      </div>
+    </div>
+    <div class="form-check mb-4">
+      <label class="toggle"><input type="checkbox" id="ruleOnReceive" checked><span class="toggle-slider"></span></label>
+      <span style="font-size:13px">Route automatically on receipt</span>
+    </div>
+    <div class="form-check mb-4">
+      <label class="toggle"><input type="checkbox" id="ruleEnabled" checked><span class="toggle-slider"></span></label>
+      <span style="font-size:13px">Enabled</span>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <input type="text" id="ruleDesc" placeholder="Optional notes">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRule()">Save Rule</button>
+    </div>
+  </div>
+
+  <!-- Route Study Modal -->
+  <div class="modal hidden" id="routeStudyModal">
+    <div class="modal-title">Route Study</div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Send all instances of this study to a destination AE.</p>
+    <div class="form-group">
+      <label>Study</label>
+      <input type="text" id="routeStudyUID" readonly style="font-family:monospace;font-size:12px">
+    </div>
+    <div class="form-group">
+      <label>Destination *</label>
+      <select id="routeDestSelect"></select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-green" onclick="confirmRouteStudy()">▶ Route Now</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = '/api';
+let state = {
+  page: 'dashboard',
+  destinations: [],
+  rules: [],
+  editingDest: null,
+  editingRule: null,
+  studyBreadcrumb: [],  // [{label, fn}]
+};
+
+// ── Nav ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.nav-item').forEach(el =>
+  el.addEventListener('click', () => showPage(el.dataset.page))
+);
+
+function showPage(page) {
+  state.page = page;
+  document.querySelectorAll('.nav-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.page === page)
+  );
+  document.querySelectorAll('[id^="page-"]').forEach(el => el.classList.add('hidden'));
+  document.getElementById(`page-${page}`).classList.remove('hidden');
+  const loaders = {
+    dashboard:    loadDashboard,
+    studies:      loadStudies,
+    destinations: loadDestinations,
+    rules:        loadRules,
+    routelog:     loadRouteLog,
+  };
+  loaders[page]?.();
+}
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const r = await fetch(API + path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) {
+    const err = await r.text();
+    throw new Error(err);
+  }
+  if (r.status === 204) return null;
+  return r.json();
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  const [stats, log] = await Promise.all([
+    api('GET', '/stats'),
+    api('GET', '/routing-log?limit=8'),
+  ]);
+
+  const bytes = stats.total_bytes || 0;
+  const size  = bytes > 1e9 ? (bytes/1e9).toFixed(1)+'GB' :
+                bytes > 1e6 ? (bytes/1e6).toFixed(1)+'MB' :
+                bytes > 1e3 ? (bytes/1e3).toFixed(0)+'KB' : bytes+'B';
+
+  document.getElementById('dashStats').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Patients</div>
+      <div class="stat-value">${stats.total_patients}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Studies</div>
+      <div class="stat-value">${stats.total_studies}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Instances</div>
+      <div class="stat-value">${stats.total_instances}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Archive Size</div>
+      <div class="stat-value" style="font-size:22px">${size}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Routes Success</div>
+      <div class="stat-value text-green">${stats.routes_ok}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Routes Failed</div>
+      <div class="stat-value ${stats.routes_failed>0?'text-red':''}">${stats.routes_failed}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Routes Queued</div>
+      <div class="stat-value">${stats.routes_queued}</div>
+    </div>
+  `;
+
+  document.getElementById('dashPanels').innerHTML = `
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:12px">Recent Routing Activity</div>
+      <div class="table-wrap no-hover" style="font-size:12px">
+        <table>
+          <thead><tr><th>Time</th><th>Instance</th><th>Destination</th><th>Status</th></tr></thead>
+          <tbody>
+          ${log.length === 0
+            ? `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">No activity yet</td></tr>`
+            : log.map(r => `
+              <tr>
+                <td class="font-mono">${fmtTime(r.queued_at)}</td>
+                <td class="font-mono truncate" style="max-width:140px" title="${r.instance_uid}">${r.instance_uid?.slice(-12)||'—'}</td>
+                <td>${r.destination_name||'—'}</td>
+                <td>${statusBadge(r.status)}</td>
+              </tr>`).join('')
+          }
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:12px">Quick Links</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn btn-secondary" style="text-align:left" onclick="showPage('studies')">🩻 Browse Studies</button>
+        <button class="btn btn-secondary" style="text-align:left" onclick="showPage('destinations')">📡 Manage Destinations</button>
+        <button class="btn btn-secondary" style="text-align:left" onclick="showPage('rules')">⚙️ Manage Routing Rules</button>
+        <button class="btn btn-secondary" style="text-align:left" onclick="showPage('routelog')">📜 View Full Route Log</button>
+      </div>
+    </div>
+  `;
+}
+
+// ── Studies ───────────────────────────────────────────────────────────────────
+async function loadStudies() {
+  state.studyBreadcrumb = [];
+  renderBreadcrumb();
+  renderStudyList();
+}
+
+async function renderStudyList(filters = {}) {
+  const params = new URLSearchParams(filters).toString();
+  const studies = await api('GET', `/studies${params ? '?'+params : ''}`);
+  const view = document.getElementById('studiesView');
+
+  const html = `
+    <div class="search-bar mb-4">
+      <input type="text" id="srchPatient" placeholder="Patient ID / MRN" style="max-width:200px">
+      <select id="srchModality" style="max-width:140px">
+        <option value="">All modalities</option>
+        <option value="MG">MG — Mammography</option>
+        <option value="CT">CT</option>
+        <option value="MR">MR</option>
+        <option value="CR">CR</option>
+        <option value="DX">DX</option>
+      </select>
+      <input type="date" id="srchFrom" style="max-width:150px">
+      <input type="date" id="srchTo"   style="max-width:150px">
+      <button class="btn btn-primary" onclick="applyStudyFilters()">Search</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Patient</th><th>Description</th><th>Modality</th><th>Series</th><th>Images</th><th>Accession</th><th></th></tr></thead>
+        <tbody>
+        ${studies.length === 0
+          ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted)">No studies found</td></tr>`
+          : studies.map(s => `
+            <tr onclick="openStudy('${s.study_uid}', '${esc(s.patient_name||s.patient_id)}', '${s.study_date||''}')">
+              <td class="font-mono">${s.study_date || '—'}</td>
+              <td>
+                <div style="font-weight:500">${esc(s.patient_name||'—')}</div>
+                <div class="font-mono text-muted">${s.patient_id}</div>
+              </td>
+              <td>${esc(s.description||'—')}</td>
+              <td><span class="badge badge-blue">${s.modality||'—'}</span></td>
+              <td>${s.series_count}</td>
+              <td>${s.instance_count}</td>
+              <td class="font-mono">${s.accession||'—'}</td>
+              <td onclick="event.stopPropagation()">
+                <div class="flex gap-2 items-center">
+                  <select class="route-select" id="rsel_${s.study_uid}">
+                    <option value="">Route to…</option>
+                    ${state.destinations.filter(d=>d.enabled).map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}
+                  </select>
+                  <button class="btn btn-sm btn-green" onclick="routeStudyFromRow('${s.study_uid}')">▶</button>
+                </div>
+              </td>
+            </tr>`).join('')
+        }
+        </tbody>
+      </table>
+    </div>`;
+  view.innerHTML = html;
+}
+
+function applyStudyFilters() {
+  renderStudyList({
+    patient_id: document.getElementById('srchPatient')?.value || '',
+    modality:   document.getElementById('srchModality')?.value || '',
+    date_from:  document.getElementById('srchFrom')?.value || '',
+    date_to:    document.getElementById('srchTo')?.value || '',
+  });
+}
+
+function routeStudyFromRow(studyUid) {
+  const sel = document.getElementById(`rsel_${studyUid}`);
+  const destId = sel?.value;
+  if (!destId) return toast('Select a destination first', 'error');
+  openRouteStudyModal(studyUid, destId);
+}
+
+async function openStudy(studyUid, patientLabel, studyDate) {
+  const series = await api('GET', `/studies/${studyUid}/series`);
+  state.studyBreadcrumb = [
+    { label: 'Studies', fn: () => { state.studyBreadcrumb=[]; renderBreadcrumb(); renderStudyList(); } },
+    { label: `${patientLabel} ${studyDate}`, fn: null },
+  ];
+  renderBreadcrumb();
+
+  const view = document.getElementById('studiesView');
+  view.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Description</th><th>Body Part</th><th>Laterality</th><th>View</th><th>Images</th><th></th></tr></thead>
+        <tbody>
+        ${series.map(s => `
+          <tr onclick="openSeries('${s.series_uid}', '${esc(s.description||'')}')">
+            <td class="font-mono">${s.series_number ?? '—'}</td>
+            <td>${esc(s.description || '—')}</td>
+            <td>${s.body_part || '—'}</td>
+            <td>${s.laterality ? `<span class="badge badge-purple">${s.laterality}</span>` : '—'}</td>
+            <td>${s.view_position ? `<span class="badge badge-blue">${s.view_position}</span>` : '—'}</td>
+            <td>${s.instance_count}</td>
+            <td><span class="badge badge-muted">Click to view instances</span></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function openSeries(seriesUid, seriesLabel) {
+  const instances = await api('GET', `/series/${seriesUid}/instances`);
+  const last = state.studyBreadcrumb[state.studyBreadcrumb.length - 1];
+  state.studyBreadcrumb.push({ label: seriesLabel || 'Series', fn: null });
+  renderBreadcrumb();
+
+  const view = document.getElementById('studiesView');
+  view.innerHTML = `
+    <div class="table-wrap no-hover">
+      <table>
+        <thead><tr><th>#</th><th>Instance UID</th><th>Size</th><th>Transfer Syntax</th><th>Rows × Cols</th><th>SHA-256</th><th></th></tr></thead>
+        <tbody>
+        ${instances.map(i => `
+          <tr>
+            <td class="font-mono">${i.instance_number ?? '—'}</td>
+            <td class="font-mono truncate" title="${i.instance_uid}">${i.instance_uid}</td>
+            <td class="font-mono">${fmtBytes(i.size_bytes)}</td>
+            <td class="font-mono" style="font-size:11px">${i.transfer_syntax || '—'}</td>
+            <td class="font-mono">${i.rows && i.columns ? i.rows+'×'+i.columns : '—'}</td>
+            <td class="font-mono" style="font-size:10px" title="${i.sha256}">${i.sha256?.slice(0,12)+'…' || '—'}</td>
+            <td>
+              <div class="flex gap-2">
+                <a href="/api/instances/${i.instance_uid}/file" download class="btn btn-sm btn-secondary">⬇ DCM</a>
+                <select class="route-select" id="rsel_i_${i.instance_uid}">
+                  <option value="">Route…</option>
+                  ${state.destinations.filter(d=>d.enabled).map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}
+                </select>
+                <button class="btn btn-sm btn-green" onclick="routeInstanceFromRow('${i.instance_uid}')">▶</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function routeInstanceFromRow(instanceUid) {
+  const sel = document.getElementById(`rsel_i_${instanceUid}`);
+  const destId = sel?.value;
+  if (!destId) return toast('Select a destination first', 'error');
+  await api('POST', `/route/instance/${instanceUid}/to/${destId}`);
+  toast(`Routing queued → ${state.destinations.find(d=>d.id==destId)?.name}`);
+}
+
+function renderBreadcrumb() {
+  const bc = document.getElementById('studiesBreadcrumb');
+  if (!state.studyBreadcrumb.length) { bc.innerHTML=''; return; }
+  bc.innerHTML = state.studyBreadcrumb.map((item, i) => {
+    const isLast = i === state.studyBreadcrumb.length - 1;
+    if (isLast) return `<span>${item.label}</span>`;
+    return `<a onclick="breadcrumbNav(${i})">${item.label}</a><span class="sep">›</span>`;
+  }).join('');
+}
+
+function breadcrumbNav(idx) {
+  state.studyBreadcrumb = state.studyBreadcrumb.slice(0, idx + 1);
+  state.studyBreadcrumb[idx].fn?.();
+  renderBreadcrumb();
+}
+
+// ── Destinations ──────────────────────────────────────────────────────────────
+async function loadDestinations() {
+  state.destinations = await api('GET', '/destinations');
+  const tbody = document.getElementById('destTable');
+  const empty = document.getElementById('destEmpty');
+  const wrap  = document.querySelector('#page-destinations .table-wrap');
+
+  if (!state.destinations.length) {
+    wrap.classList.add('hidden'); empty.classList.remove('hidden'); return;
+  }
+  empty.classList.add('hidden'); wrap.classList.remove('hidden');
+
+  tbody.innerHTML = state.destinations.map(d => `
+    <tr>
+      <td><strong>${esc(d.name)}</strong>${d.description?`<div class="text-muted" style="font-size:11px">${esc(d.description)}</div>`:''}</td>
+      <td class="font-mono">${d.ae_title}</td>
+      <td class="font-mono">${d.host}</td>
+      <td class="font-mono">${d.port}</td>
+      <td>
+        <div class="flex items-center gap-2">
+          <div class="status-dot ${d.enabled?'green':'muted'}"></div>
+          ${d.enabled?'Enabled':'Disabled'}
+        </div>
+      </td>
+      <td>
+        <div class="flex gap-2">
+          <button class="btn btn-sm btn-secondary" onclick="echoDestById(${d.id},'${esc(d.name)}')">🔔 Echo</button>
+          <button class="btn-icon" onclick="openDestModal(${d.id})">✏️</button>
+          <button class="btn-icon" onclick="deleteDest(${d.id},'${esc(d.name)}')">🗑</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function openDestModal(id = null) {
+  state.editingDest = id;
+  document.getElementById('destModalTitle').textContent = id ? 'Edit Destination' : 'New Destination';
+  if (id) {
+    const d = state.destinations.find(x => x.id === id);
+    document.getElementById('destName').value    = d.name;
+    document.getElementById('destAE').value      = d.ae_title;
+    document.getElementById('destHost').value    = d.host;
+    document.getElementById('destPort').value    = d.port;
+    document.getElementById('destDesc').value    = d.description || '';
+    document.getElementById('destEnabled').checked = d.enabled;
+  } else {
+    ['destName','destAE','destHost','destDesc'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('destPort').value = '104';
+    document.getElementById('destEnabled').checked = true;
+  }
+  openModal('destModal');
+}
+
+async function saveDest() {
+  const body = {
+    name:        document.getElementById('destName').value.trim(),
+    ae_title:    document.getElementById('destAE').value.trim().toUpperCase(),
+    host:        document.getElementById('destHost').value.trim(),
+    port:        parseInt(document.getElementById('destPort').value),
+    description: document.getElementById('destDesc').value.trim() || null,
+    enabled:     document.getElementById('destEnabled').checked,
+  };
+  if (!body.name || !body.ae_title || !body.host) return toast('Name, AE Title and Host are required', 'error');
+  try {
+    if (state.editingDest) {
+      await api('PUT', `/destinations/${state.editingDest}`, body);
+      toast('Destination updated');
+    } else {
+      await api('POST', '/destinations', body);
+      toast('Destination added');
+    }
+    closeModal(); loadDestinations();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deleteDest(id, name) {
+  if (!confirm(`Delete destination "${name}"? Any rules using it will also be removed.`)) return;
+  await api('DELETE', `/destinations/${id}`);
+  toast('Destination deleted'); loadDestinations();
+}
+
+async function testEcho() {
+  if (!state.editingDest) return toast('Save the destination first, then test echo', 'info');
+  const btn = document.getElementById('echoBtn');
+  btn.textContent = '…'; btn.disabled = true;
+  const res = await api('POST', `/destinations/${state.editingDest}/echo`);
+  btn.textContent = '🔔 Test Echo'; btn.disabled = false;
+  toast(res.message, res.ok ? 'success' : 'error');
+}
+
+async function echoDestById(id, name) {
+  const res = await api('POST', `/destinations/${id}/echo`);
+  toast(`${name}: ${res.message}`, res.ok ? 'success' : 'error');
+}
+
+// ── Routing Rules ─────────────────────────────────────────────────────────────
+async function loadRules() {
+  if (!state.destinations.length) state.destinations = await api('GET', '/destinations');
+  state.rules = await api('GET', '/rules');
+  const tbody = document.getElementById('rulesTable');
+  const empty = document.getElementById('rulesEmpty');
+  const wrap  = document.querySelector('#page-rules .table-wrap');
+
+  if (!state.rules.length) {
+    wrap.classList.add('hidden'); empty.classList.remove('hidden'); return;
+  }
+  empty.classList.add('hidden'); wrap.classList.remove('hidden');
+
+  tbody.innerHTML = state.rules.map(r => {
+    const chips = [];
+    if (r.match_modality)  chips.push(`Modality: ${r.match_modality}`);
+    if (r.match_ae_title)  chips.push(`AE: ${r.match_ae_title}`);
+    if (r.match_body_part) chips.push(`Body: ${r.match_body_part}`);
+
+    return `<tr>
+      <td class="font-mono" style="text-align:center">${r.priority}</td>
+      <td>
+        <strong>${esc(r.name)}</strong>
+        ${r.description?`<div class="text-muted" style="font-size:11px">${esc(r.description)}</div>`:''}
+      </td>
+      <td>
+        ${chips.length
+          ? `<div class="match-chips">${chips.map(c=>`<span class="chip">${c}</span>`).join('')}</div>`
+          : '<span class="text-muted" style="font-size:12px">All</span>'}
+      </td>
+      <td>
+        <div style="font-weight:500">${esc(r.destination_name||'—')}</div>
+        <div class="font-mono text-muted">${r.destination_ae||''}</div>
+      </td>
+      <td style="text-align:center">${r.on_receive ? '✓' : '—'}</td>
+      <td style="text-align:center">
+        <label class="toggle">
+          <input type="checkbox" ${r.enabled?'checked':''} onchange="toggleRule(${r.id}, this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+      </td>
+      <td>
+        <div class="flex gap-2">
+          <button class="btn-icon" onclick="openRuleModal(${r.id})">✏️</button>
+          <button class="btn-icon" onclick="deleteRule(${r.id},'${esc(r.name)}')">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openRuleModal(id = null) {
+  state.editingRule = id;
+  document.getElementById('ruleModalTitle').textContent = id ? 'Edit Rule' : 'New Routing Rule';
+  const destSel = document.getElementById('ruleDest');
+  destSel.innerHTML = state.destinations.map(d => `<option value="${d.id}">${d.name} [${d.ae_title}]</option>`).join('');
+
+  if (id) {
+    const r = state.rules.find(x => x.id === id);
+    document.getElementById('ruleName').value      = r.name;
+    document.getElementById('rulePriority').value  = r.priority;
+    document.getElementById('ruleDest').value      = r.destination_id;
+    document.getElementById('ruleModality').value  = r.match_modality || '';
+    document.getElementById('ruleAE').value        = r.match_ae_title || '';
+    document.getElementById('ruleBodyPart').value  = r.match_body_part || '';
+    document.getElementById('ruleOnReceive').checked = r.on_receive;
+    document.getElementById('ruleEnabled').checked   = r.enabled;
+    document.getElementById('ruleDesc').value      = r.description || '';
+  } else {
+    ['ruleName','ruleModality','ruleAE','ruleBodyPart','ruleDesc'].forEach(i => document.getElementById(i).value='');
+    document.getElementById('rulePriority').value = '100';
+    document.getElementById('ruleOnReceive').checked = true;
+    document.getElementById('ruleEnabled').checked   = true;
+  }
+  openModal('ruleModal');
+}
+
+async function saveRule() {
+  const body = {
+    name:            document.getElementById('ruleName').value.trim(),
+    destination_id:  parseInt(document.getElementById('ruleDest').value),
+    priority:        parseInt(document.getElementById('rulePriority').value),
+    enabled:         document.getElementById('ruleEnabled').checked,
+    match_modality:  document.getElementById('ruleModality').value.trim().toUpperCase() || null,
+    match_ae_title:  document.getElementById('ruleAE').value.trim().toUpperCase() || null,
+    match_body_part: document.getElementById('ruleBodyPart').value.trim().toUpperCase() || null,
+    on_receive:      document.getElementById('ruleOnReceive').checked,
+    description:     document.getElementById('ruleDesc').value.trim() || null,
+  };
+  if (!body.name) return toast('Rule name is required', 'error');
+  try {
+    if (state.editingRule) {
+      await api('PUT', `/rules/${state.editingRule}`, body);
+      toast('Rule updated');
+    } else {
+      await api('POST', '/rules', body);
+      toast('Rule created');
+    }
+    closeModal(); loadRules();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function toggleRule(id, enabled) {
+  await api('PUT', `/rules/${id}`, { ...(state.rules.find(r=>r.id===id)), enabled });
+  state.rules.find(r=>r.id===id).enabled = enabled;
+  toast(enabled ? 'Rule enabled' : 'Rule disabled');
+}
+
+async function deleteRule(id, name) {
+  if (!confirm(`Delete rule "${name}"?`)) return;
+  await api('DELETE', `/rules/${id}`);
+  toast('Rule deleted'); loadRules();
+}
+
+// ── Route study modal ─────────────────────────────────────────────────────────
+let _pendingRouteStudy = null;
+
+function openRouteStudyModal(studyUid, preselect = null) {
+  _pendingRouteStudy = studyUid;
+  document.getElementById('routeStudyUID').value = studyUid;
+  const sel = document.getElementById('routeDestSelect');
+  sel.innerHTML = state.destinations.filter(d=>d.enabled).map(d =>
+    `<option value="${d.id}" ${d.id==preselect?'selected':''}>${d.name} [${d.ae_title}]</option>`
+  ).join('');
+  openModal('routeStudyModal');
+}
+
+async function confirmRouteStudy() {
+  const destId = document.getElementById('routeDestSelect').value;
+  if (!destId) return toast('Select a destination', 'error');
+  await api('POST', `/route/study/${_pendingRouteStudy}/to/${destId}`);
+  toast(`Routing study queued → ${state.destinations.find(d=>d.id==destId)?.name}`);
+  closeModal();
+}
+
+// ── Route Log ─────────────────────────────────────────────────────────────────
+async function loadRouteLog() {
+  const log = await api('GET', '/routing-log?limit=100');
+  const tbody = document.getElementById('routeLogTable');
+  const empty = document.getElementById('routeLogEmpty');
+  const wrap  = document.querySelector('#page-routelog .table-wrap');
+
+  if (!log.length) { wrap.classList.add('hidden'); empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden'); wrap.classList.remove('hidden');
+
+  tbody.innerHTML = log.map(r => `
+    <tr>
+      <td class="font-mono">${fmtTime(r.queued_at)}</td>
+      <td class="font-mono truncate" title="${r.instance_uid}" style="max-width:160px">${r.instance_uid||'—'}</td>
+      <td>${esc(r.destination_name||'—')}</td>
+      <td>${esc(r.rule_name||'Manual')}</td>
+      <td>${statusBadge(r.status)}</td>
+      <td style="text-align:center">${r.attempts}</td>
+      <td class="text-muted" style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${r.last_error||''}">${r.last_error||'—'}</td>
+    </tr>`).join('');
+}
+
+// ── Modals ────────────────────────────────────────────────────────────────────
+function openModal(id) {
+  document.getElementById('modalOverlay').classList.remove('hidden');
+  document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('modalOverlay')) return;
+  document.getElementById('modalOverlay').classList.add('hidden');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function statusBadge(s) {
+  const map = { success:'green', failed:'red', queued:'amber', sending:'blue' };
+  return `<span class="badge badge-${map[s]||'muted'}">${s||'—'}</span>`;
+}
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+function fmtBytes(b) {
+  if (!b) return '—';
+  return b > 1e6 ? (b/1e6).toFixed(1)+'MB' : b > 1e3 ? (b/1e3).toFixed(0)+'KB' : b+'B';
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function toast(msg, type='success') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 4500);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(async () => {
+  state.destinations = await api('GET', '/destinations').catch(() => []);
+  loadDashboard();
+})();
+</script>
+</body>
+</html>
