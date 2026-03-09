@@ -156,6 +156,7 @@
     <div class="nav-item active" data-page="dashboard"><span class="icon">📊</span> Dashboard</div>
     <div class="nav-item" data-page="studies"><span class="icon">🩻</span> Studies</div>
     <div class="nav-section" style="margin-top:8px">Routing</div>
+    <div class="nav-item" data-page="agents"><span class="icon">🖥️</span> Agents</div>
     <div class="nav-item" data-page="destinations"><span class="icon">📡</span> Destinations</div>
     <div class="nav-item" data-page="rules"><span class="icon">⚙️</span> Rules</div>
     <div class="nav-item" data-page="routelog"><span class="icon">📜</span> Route Log</div>
@@ -181,6 +182,26 @@
       </div>
       <div class="breadcrumb" id="studiesBreadcrumb"></div>
       <div id="studiesView"></div>
+    </div>
+
+    <!-- ── Agents ── -->
+    <div id="page-agents" class="hidden">
+      <div class="page-header">
+        <div class="page-title">Ingest Agents</div>
+        <button class="btn btn-secondary" onclick="loadAgents()">↻ Refresh</button>
+      </div>
+      <div id="agentWarnings"></div>
+      <div class="table-wrap no-hover" id="agentsTableWrap">
+        <table>
+          <thead><tr><th>Status</th><th>AE Title</th><th>Host</th><th>Storage</th><th>Images Received</th><th>First Seen</th><th>Last Seen</th><th>Rules</th><th></th></tr></thead>
+          <tbody id="agentsTable"></tbody>
+        </table>
+      </div>
+      <div class="empty hidden" id="agentsEmpty">
+        <div class="icon">🖥️</div>
+        <p>No agents have registered yet</p>
+        <div class="text-muted mt-2" style="font-size:13px">Agents register automatically when they start up.<br>Make sure <code>ROUTER_URL</code> is set in the agent's <code>.env</code> file.</div>
+      </div>
     </div>
 
     <!-- ── Destinations ── -->
@@ -236,6 +257,28 @@
 
 <!-- ══════ MODALS ══════ -->
 <div id="modalOverlay" class="modal-overlay hidden" onclick="closeModal(event)">
+
+  <!-- Agent Edit Modal -->
+  <div class="modal hidden" id="agentModal">
+    <div class="modal-title">Edit Agent</div>
+    <div class="form-group">
+      <label>AE Title</label>
+      <input type="text" id="agentAE" readonly style="opacity:0.6;cursor:not-allowed">
+      <div class="form-hint">AE Title is set by the agent's configuration and cannot be changed here.</div>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <input type="text" id="agentDesc" placeholder="e.g. Site A mammography unit agent">
+    </div>
+    <div class="form-check" style="margin-top:8px">
+      <label class="toggle"><input type="checkbox" id="agentEnabled"><span class="toggle-slider"></span></label>
+      <span style="font-size:13px">Enabled</span>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAgent()">Save</button>
+    </div>
+  </div>
 
   <!-- Destination Modal -->
   <div class="modal hidden" id="destModal">
@@ -310,9 +353,11 @@
       </div>
       <div class="form-row" style="margin-top:12px">
         <div class="form-group" style="margin:0">
-          <label>Receiving AE Title <span class="text-muted" style="font-weight:400;text-transform:none">(which agent)</span></label>
-          <input type="text" id="ruleReceivingAE" placeholder="ARCHIVE_SITE_A" style="text-transform:uppercase">
-          <div class="form-hint">Filter by the agent that accepted the image — useful for multi-site deployments</div>
+          <label>Receiving Agent <span class="text-muted" style="font-weight:400;text-transform:none">(which agent)</span></label>
+          <select id="ruleReceivingAE">
+            <option value="">Any agent</option>
+          </select>
+          <div class="form-hint" id="ruleReceivingAEHint">Restrict this rule to images received by a specific agent — useful for multi-site deployments</div>
         </div>
         <div class="form-group" style="margin:0">
           <label>Body Part</label>
@@ -376,11 +421,12 @@
 const API = '/api';
 let state = {
   page: 'dashboard',
+  agents: [],
   destinations: [],
   rules: [],
   editingDest: null,
   editingRule: null,
-  studyBreadcrumb: [],  // [{label, fn}]
+  studyBreadcrumb: [],
 };
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
@@ -398,6 +444,7 @@ function showPage(page) {
   const loaders = {
     dashboard:    loadDashboard,
     studies:      loadStudies,
+    agents:       loadAgents,
     destinations: loadDestinations,
     rules:        loadRules,
     routelog:     loadRouteLog,
@@ -663,6 +710,111 @@ function breadcrumbNav(idx) {
   renderBreadcrumb();
 }
 
+// ── Agents ────────────────────────────────────────────────────────────────────
+let _editingAgentId = null;
+
+async function loadAgents() {
+  const [agents, orphans] = await Promise.all([
+    api('GET', '/agents'),
+    api('GET', '/agents/orphaned-rules'),
+  ]);
+  state.agents = agents;
+
+  // Orphan warnings banner
+  const warn = document.getElementById('agentWarnings');
+  if (orphans.length) {
+    warn.innerHTML = `
+      <div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);
+                  border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px">
+        <strong style="color:var(--amber)">⚠ ${orphans.length} routing rule${orphans.length>1?'s':''} reference${orphans.length===1?'s':''} an unregistered agent AE title</strong>
+        <div class="text-muted mt-2">These rules will never match until an agent with that AE title registers:
+          ${orphans.map(r=>`<div style="margin-top:6px">• <strong>${esc(r.name)}</strong> → AE title <code style="background:var(--surface2);padding:1px 5px;border-radius:3px">${r.match_receiving_ae}</code></div>`).join('')}
+        </div>
+      </div>`;
+  } else {
+    warn.innerHTML = '';
+  }
+
+  const tbody = document.getElementById('agentsTable');
+  const empty = document.getElementById('agentsEmpty');
+  const wrap  = document.getElementById('agentsTableWrap');
+
+  if (!agents.length) {
+    wrap.classList.add('hidden'); empty.classList.remove('hidden'); return;
+  }
+  empty.classList.add('hidden'); wrap.classList.remove('hidden');
+
+  tbody.innerHTML = agents.map(a => {
+    const online = a.online;
+    const lastSeen = a.last_seen ? timeSince(a.last_seen) : 'never';
+    return `<tr>
+      <td>
+        <div class="flex items-center gap-2">
+          <div class="status-dot ${online ? 'green' : a.enabled ? 'amber' : 'muted'}"
+               title="${online ? 'Online' : a.enabled ? 'Offline' : 'Disabled'}"></div>
+          <span style="font-size:12px">${online ? 'Online' : a.enabled ? 'Offline' : 'Disabled'}</span>
+        </div>
+      </td>
+      <td>
+        <strong class="font-mono">${a.ae_title}</strong>
+        ${a.description ? `<div class="text-muted" style="font-size:11px">${esc(a.description)}</div>` : ''}
+      </td>
+      <td class="font-mono text-muted">${a.host || '—'}</td>
+      <td>${a.storage_backend ? `<span class="badge badge-muted">${a.storage_backend}</span>` : '—'}</td>
+      <td class="font-mono">${(a.instances_received||0).toLocaleString()}</td>
+      <td class="text-muted" style="font-size:12px">${fmtTime(a.first_seen)}</td>
+      <td class="text-muted" style="font-size:12px">${lastSeen}</td>
+      <td style="text-align:center">
+        ${a.rule_count > 0
+          ? `<span class="badge badge-blue">${a.rule_count} rule${a.rule_count>1?'s':''}</span>`
+          : '<span class="text-muted" style="font-size:12px">none</span>'}
+      </td>
+      <td>
+        <div class="flex gap-2">
+          <button class="btn-icon" onclick="openAgentModal(${a.id})" title="Edit">✏️</button>
+          <button class="btn-icon" onclick="deleteAgentConfirm(${a.id},'${esc(a.ae_title)}')" title="Remove">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openAgentModal(id) {
+  _editingAgentId = id;
+  const a = state.agents.find(x => x.id === id);
+  document.getElementById('agentAE').value      = a.ae_title;
+  document.getElementById('agentDesc').value    = a.description || '';
+  document.getElementById('agentEnabled').checked = a.enabled;
+  openModal('agentModal');
+}
+
+async function saveAgent() {
+  const body = {
+    description: document.getElementById('agentDesc').value.trim() || null,
+    enabled:     document.getElementById('agentEnabled').checked,
+  };
+  await api('PATCH', `/agents/${_editingAgentId}`, body);
+  toast('Agent updated');
+  closeModal();
+  loadAgents();
+}
+
+async function deleteAgentConfirm(id, ae) {
+  if (!confirm(`Remove agent "${ae}" from the registry?\n\nThis only removes the registration record — it won't stop the agent if it's running. It will re-register automatically on next startup.`)) return;
+  await api('DELETE', `/agents/${id}`);
+  toast('Agent removed from registry');
+  loadAgents();
+}
+
+function timeSince(iso) {
+  if (!iso) return '—';
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60)    return `${diff}s ago`;
+  if (diff < 3600)  return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return `${Math.floor(diff/86400)}d ago`;
+}
+
 // ── Destinations ──────────────────────────────────────────────────────────────
 async function loadDestinations() {
   state.destinations = await api('GET', '/destinations');
@@ -846,6 +998,36 @@ function validateRuleDests() {
   hint.style.display = getSelectedDestIds().length ? 'none' : 'block';
 }
 
+function populateAgentDropdown(selectedAE = '') {
+  const sel = document.getElementById('ruleReceivingAE');
+  sel.innerHTML = '<option value="">Any agent</option>';
+
+  if (state.agents.length) {
+    // Known registered agents
+    state.agents.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.ae_title;
+      opt.textContent = `${a.ae_title}${a.description ? ' — ' + a.description : ''}${a.online ? ' 🟢' : ''}`;
+      if (a.ae_title === selectedAE) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  // If selectedAE isn't in the known agents list, add it as an orphan option with a warning
+  if (selectedAE && !state.agents.find(a => a.ae_title === selectedAE)) {
+    const opt = document.createElement('option');
+    opt.value = selectedAE;
+    opt.textContent = `${selectedAE} ⚠ (not registered)`;
+    opt.selected = true;
+    sel.appendChild(opt);
+    document.getElementById('ruleReceivingAEHint').innerHTML =
+      `<span style="color:var(--amber)">⚠ This AE title has not registered with the server. The rule will not match until an agent with this identity connects.</span>`;
+  } else {
+    document.getElementById('ruleReceivingAEHint').textContent =
+      'Restrict this rule to images received by a specific agent — useful for multi-site deployments';
+  }
+}
+
 function openRuleModal(id = null) {
   state.editingRule = id;
   document.getElementById('ruleModalTitle').textContent = id ? 'Edit Rule' : 'New Routing Rule';
@@ -856,18 +1038,19 @@ function openRuleModal(id = null) {
     const dests = typeof r.destinations === 'string' ? JSON.parse(r.destinations) : (r.destinations || []);
     const selectedIds = dests.map(d => d.id);
     renderRuleDestList(selectedIds);
-    document.getElementById('ruleName').value          = r.name;
-    document.getElementById('rulePriority').value      = r.priority;
-    document.getElementById('ruleModality').value      = r.match_modality || '';
-    document.getElementById('ruleAE').value            = r.match_ae_title || '';
-    document.getElementById('ruleReceivingAE').value   = r.match_receiving_ae || '';
-    document.getElementById('ruleBodyPart').value      = r.match_body_part || '';
-    document.getElementById('ruleOnReceive').checked   = r.on_receive;
-    document.getElementById('ruleEnabled').checked     = r.enabled;
-    document.getElementById('ruleDesc').value          = r.description || '';
+    document.getElementById('ruleName').value        = r.name;
+    document.getElementById('rulePriority').value    = r.priority;
+    document.getElementById('ruleModality').value    = r.match_modality || '';
+    document.getElementById('ruleAE').value          = r.match_ae_title || '';
+    document.getElementById('ruleBodyPart').value    = r.match_body_part || '';
+    document.getElementById('ruleOnReceive').checked = r.on_receive;
+    document.getElementById('ruleEnabled').checked   = r.enabled;
+    document.getElementById('ruleDesc').value        = r.description || '';
+    populateAgentDropdown(r.match_receiving_ae || '');
   } else {
     renderRuleDestList([]);
-    ['ruleName','ruleModality','ruleAE','ruleReceivingAE','ruleBodyPart','ruleDesc'].forEach(i => document.getElementById(i).value = '');
+    ['ruleName','ruleModality','ruleAE','ruleBodyPart','ruleDesc'].forEach(i => document.getElementById(i).value = '');
+    populateAgentDropdown('');
     document.getElementById('rulePriority').value    = '100';
     document.getElementById('ruleOnReceive').checked = false;
     document.getElementById('ruleEnabled').checked   = true;
@@ -885,7 +1068,7 @@ async function saveRule() {
     enabled:         document.getElementById('ruleEnabled').checked,
     match_modality:      document.getElementById('ruleModality').value.trim().toUpperCase() || null,
     match_ae_title:      document.getElementById('ruleAE').value.trim().toUpperCase() || null,
-    match_receiving_ae:  document.getElementById('ruleReceivingAE').value.trim().toUpperCase() || null,
+    match_receiving_ae:  document.getElementById('ruleReceivingAE').value || null,
     match_body_part:     document.getElementById('ruleBodyPart').value.trim().toUpperCase() || null,
     on_receive:      document.getElementById('ruleOnReceive').checked,
     description:     document.getElementById('ruleDesc').value.trim() || null,
@@ -996,7 +1179,10 @@ function toast(msg, type='success') {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
-  state.destinations = await api('GET', '/destinations').catch(() => []);
+  [state.destinations, state.agents] = await Promise.all([
+    api('GET', '/destinations').catch(() => []),
+    api('GET', '/agents').catch(() => []),
+  ]);
   loadDashboard();
 })();
 </script>

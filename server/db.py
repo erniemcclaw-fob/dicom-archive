@@ -56,6 +56,24 @@ BEGIN
   END IF;
 END $$;
 
+-- ── Registered agents ─────────────────────────────────────────────────────────
+-- Each ingest agent registers itself on startup and sends periodic heartbeats.
+-- ae_title is UNIQUE — this is the source of truth for agent identity.
+-- If two agents are intentionally configured with the same AE title (HA pair),
+-- they share this row and their last_seen/instances_received are merged.
+CREATE TABLE IF NOT EXISTS agents (
+    id                  SERIAL PRIMARY KEY,
+    ae_title            TEXT NOT NULL UNIQUE,   -- the agent's configured AE_TITLE
+    host                TEXT,                   -- hostname or IP reported at registration
+    description         TEXT,                   -- human-set label via the UI
+    enabled             BOOLEAN NOT NULL DEFAULT TRUE,
+    storage_backend     TEXT,                   -- "local", "s3", or "azure"
+    version             TEXT,                   -- future: agent software version
+    first_seen          TIMESTAMPTZ DEFAULT NOW(),
+    last_seen           TIMESTAMPTZ DEFAULT NOW(),
+    instances_received  BIGINT NOT NULL DEFAULT 0
+);
+
 -- Many-to-many: one rule can fan out to multiple destinations
 CREATE TABLE IF NOT EXISTS rule_destinations (
     rule_id        INTEGER NOT NULL REFERENCES routing_rules(id)   ON DELETE CASCADE,
@@ -402,6 +420,106 @@ class DB:
                   AND rl.attempts < 3
                   AND d.enabled = TRUE
                 ORDER BY rl.queued_at
+            """)
+            return cur.fetchall()
+
+    # ── Agents ────────────────────────────────────────────────────────────────
+
+    def register_agent(self, ae_title: str, host: str = None,
+                       storage_backend: str = None, version: str = None):
+        """
+        Upsert an agent record on startup.
+        Returns the agent row. Uses ae_title as the unique key.
+        """
+        with self.cursor() as cur:
+            cur.execute("""
+                INSERT INTO agents (ae_title, host, storage_backend, version,
+                                    first_seen, last_seen)
+                VALUES (%s, %s, %s, %s, NOW(), NOW())
+                ON CONFLICT (ae_title) DO UPDATE
+                    SET host             = EXCLUDED.host,
+                        storage_backend  = COALESCE(EXCLUDED.storage_backend, agents.storage_backend),
+                        version          = COALESCE(EXCLUDED.version, agents.version),
+                        last_seen        = NOW()
+                RETURNING *
+            """, (ae_title.upper(), host, storage_backend, version))
+            return cur.fetchone()
+
+    def heartbeat_agent(self, ae_title: str, instances_delta: int = 0):
+        """
+        Update last_seen and optionally increment instances_received counter.
+        Called periodically by the agent.
+        """
+        with self.cursor() as cur:
+            cur.execute("""
+                UPDATE agents
+                SET last_seen           = NOW(),
+                    instances_received  = instances_received + %s
+                WHERE ae_title = %s
+                RETURNING id
+            """, (instances_delta, ae_title.upper()))
+            return cur.fetchone()
+
+    def list_agents(self):
+        with self.cursor() as cur:
+            cur.execute("""
+                SELECT a.*,
+                       -- Flag rules that reference this agent (for cross-reference)
+                       COUNT(r.id) AS rule_count,
+                       -- "online" if last heartbeat within 3 minutes
+                       (NOW() - a.last_seen) < INTERVAL '3 minutes' AS online
+                FROM agents a
+                LEFT JOIN routing_rules r ON r.match_receiving_ae = a.ae_title
+                GROUP BY a.id
+                ORDER BY a.ae_title
+            """)
+            return cur.fetchall()
+
+    def get_agent(self, agent_id: int):
+        with self.cursor() as cur:
+            cur.execute("SELECT * FROM agents WHERE id = %s", (agent_id,))
+            return cur.fetchone()
+
+    def get_agent_by_ae(self, ae_title: str):
+        with self.cursor() as cur:
+            cur.execute("SELECT * FROM agents WHERE ae_title = %s",
+                        (ae_title.upper(),))
+            return cur.fetchone()
+
+    def update_agent(self, agent_id: int, description: str = None,
+                     enabled: bool = None):
+        sets, params = [], []
+        if description is not None:
+            sets.append("description = %s"); params.append(description)
+        if enabled is not None:
+            sets.append("enabled = %s"); params.append(enabled)
+        if not sets:
+            return self.get_agent(agent_id)
+        with self.cursor() as cur:
+            cur.execute(
+                f"UPDATE agents SET {', '.join(sets)} WHERE id = %s RETURNING *",
+                params + [agent_id]
+            )
+            return cur.fetchone()
+
+    def delete_agent(self, agent_id: int):
+        with self.cursor() as cur:
+            cur.execute("DELETE FROM agents WHERE id = %s", (agent_id,))
+
+    def get_orphaned_rules(self):
+        """
+        Return routing rules whose match_receiving_ae references an AE title
+        that has never registered with this server — likely a misconfiguration.
+        """
+        with self.cursor() as cur:
+            cur.execute("""
+                SELECT r.id, r.name, r.match_receiving_ae
+                FROM routing_rules r
+                WHERE r.match_receiving_ae IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM agents a
+                    WHERE a.ae_title = r.match_receiving_ae
+                  )
             """)
             return cur.fetchall()
 

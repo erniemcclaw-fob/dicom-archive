@@ -47,6 +47,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("dicom-agent")
 
+AGENT_VERSION = "1.0.0"
+
 # ── Config ────────────────────────────────────────────────────────────────────
 
 AE_TITLE      = os.getenv("AE_TITLE",     "ARCHIVE_SCP")
@@ -60,6 +62,76 @@ MAX_BYTES     = int(os.getenv("MAX_FILE_BYTES", "0"))  # 0 = unlimited
 ROUTER_URL    = os.getenv("ROUTER_URL", "").rstrip("/")  # e.g. http://server:8080
 
 QUARANTINE.mkdir(parents=True, exist_ok=True)
+
+# ── Registration + Heartbeat ──────────────────────────────────────────────────
+
+def _get_host() -> str:
+    """Best-effort: return this machine's hostname or IP."""
+    import socket
+    try:
+        return socket.gethostname()
+    except Exception:
+        return "unknown"
+
+def _server_post(path: str, payload: dict, label: str = ""):
+    """POST JSON to the server. Returns parsed response or None on failure."""
+    if not ROUTER_URL:
+        return None
+    data = _json.dumps(payload).encode()
+    try:
+        req = urllib.request.Request(
+            f"{ROUTER_URL}{path}",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return _json.loads(resp.read())
+    except Exception as e:
+        logger.warning(f"  Server {label or path} failed: {e}")
+        return None
+
+def register_with_server():
+    """Register this agent with the server on startup."""
+    result = _server_post("/internal/register", {
+        "ae_title":        AE_TITLE,
+        "host":            _get_host(),
+        "storage_backend": os.getenv("STORAGE_BACKEND", "local"),
+        "version":         AGENT_VERSION,
+    }, label="registration")
+    if result and result.get("ok"):
+        logger.info(f"Registered with server as [{AE_TITLE}]")
+    else:
+        logger.warning("Could not register with server — will retry on next heartbeat")
+
+def _heartbeat_loop(interval: int = 60):
+    """
+    Background thread: sends a heartbeat to the server every `interval` seconds.
+    Tracks instances stored since the last heartbeat for the server's counter.
+    """
+    import threading
+    _counter = {"since_last": 0}
+
+    def beat():
+        while True:
+            import time
+            time.sleep(interval)
+            delta = _counter["since_last"]
+            _counter["since_last"] = 0
+            result = _server_post("/internal/heartbeat", {
+                "ae_title":        AE_TITLE,
+                "instances_delta": delta,
+            }, label="heartbeat")
+            if result is None:
+                # Server unreachable — re-register on next successful heartbeat
+                register_with_server()
+
+    t = threading.Thread(target=beat, daemon=True, name="heartbeat")
+    t.start()
+    return _counter  # caller can increment _counter["since_last"]
+
+# Shared instance counter incremented by handle_store
+_instance_counter = {"since_last": 0}
 
 # ── Storage + DB (initialised once at startup) ────────────────────────────────
 
@@ -183,6 +255,7 @@ def handle_store(event):
                 # the file is safely in blob storage; DB can be repaired later.
                 logger.error(f"  DB write failed (file is safe in storage): {db_err}")
 
+        _instance_counter["since_last"] += 1
         logger.info(f"  ✓ Stored  {blob_key}")
         return 0x0000  # C-STORE success
 
@@ -278,7 +351,14 @@ def run():
     logger.info(f"║  Listening: {LISTEN_HOST}:{LISTEN_PORT:<26}║")
     logger.info(f"║  Storage  : {os.getenv('STORAGE_BACKEND','local'):<30}║")
     logger.info(f"║  Database : {'enabled' if db else 'disabled (file-only mode)':<30}║")
+    logger.info(f"║  Router   : {ROUTER_URL or 'not configured':<30}║")
     logger.info(f"╚══════════════════════════════════════════╝")
+
+    # Register with server and start heartbeat thread (best-effort)
+    if ROUTER_URL:
+        register_with_server()
+        global _instance_counter
+        _instance_counter = _heartbeat_loop(interval=60)
 
     ae.start_server(
         (LISTEN_HOST, LISTEN_PORT),

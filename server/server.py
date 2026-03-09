@@ -327,13 +327,85 @@ def delete_rule(rule_id: int):
 #  INTERNAL — called by the ingest agent after each successful store
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════════
+#  AGENTS API
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class AgentUpdate(BaseModel):
+    description: Optional[str] = None
+    enabled:     Optional[bool] = None
+
+@app.get("/api/agents")
+def list_agents():
+    return rows_to_list(db.list_agents())
+
+@app.get("/api/agents/orphaned-rules")
+def orphaned_rules():
+    """Rules whose match_receiving_ae references an unknown agent."""
+    return rows_to_list(db.get_orphaned_rules())
+
+@app.get("/api/agents/{agent_id}")
+def get_agent(agent_id: int):
+    return row_or_404(db.get_agent(agent_id), "Agent not found")
+
+@app.patch("/api/agents/{agent_id}")
+def update_agent(agent_id: int, body: AgentUpdate):
+    row = db.update_agent(agent_id, description=body.description, enabled=body.enabled)
+    return row_or_404(row, "Agent not found")
+
+@app.delete("/api/agents/{agent_id}", status_code=204)
+def delete_agent(agent_id: int):
+    db.delete_agent(agent_id)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  INTERNAL — called by ingest agents
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class AgentRegistration(BaseModel):
+    ae_title:         str
+    host:             Optional[str] = None
+    storage_backend:  Optional[str] = None
+    version:          Optional[str] = None
+
+class AgentHeartbeat(BaseModel):
+    ae_title:          str
+    instances_delta:   int = 0   # how many instances stored since last heartbeat
+
 class IngestNotification(BaseModel):
     instance_id:   int
     instance_uid:  str
     modality:      Optional[str] = None
     sending_ae:    Optional[str] = None
-    receiving_ae:  Optional[str] = None   # the agent that accepted the image
+    receiving_ae:  Optional[str] = None
     body_part:     Optional[str] = None
+
+@app.post("/internal/register")
+def register_agent(body: AgentRegistration):
+    """
+    Called by the agent on startup (and on reconnect).
+    Creates or updates the agent record — ae_title is the unique key.
+    """
+    row = db.register_agent(
+        ae_title        = body.ae_title,
+        host            = body.host,
+        storage_backend = body.storage_backend,
+        version         = body.version,
+    )
+    logger.info(f"Agent registered: [{body.ae_title}] from {body.host}")
+    return {"ok": True, "agent": dict(row)}
+
+@app.post("/internal/heartbeat")
+def agent_heartbeat(body: AgentHeartbeat):
+    """
+    Called every 60 seconds by the agent.
+    Updates last_seen and increments the instance counter.
+    """
+    row = db.heartbeat_agent(body.ae_title, body.instances_delta)
+    if not row:
+        # Agent not registered yet — register it now with minimal info
+        db.register_agent(ae_title=body.ae_title)
+    return {"ok": True}
 
 @app.post("/internal/routed")
 def on_instance_received(body: IngestNotification, background_tasks: BackgroundTasks):
