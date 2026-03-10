@@ -62,5 +62,22 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Watchtower — automatic container updates ────────────────────────────────
+  # Uncomment this service when you're ready for automatic updates.
+  # Requires images to be published to a container registry (Docker Hub, GHCR, etc.)
+  # rather than built locally. See INSTALL.md § Updating for the full workflow.
+  #
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   restart: unless-stopped
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   # Check for new images every hour (3600 seconds).
+  #   # Only watches the agent and server — leaves postgres alone.
+  #   command: --interval 3600 dicom-archive-agent-1 dicom-archive-server-1
+  #   environment:
+  #     - WATCHTOWER_CLEANUP=true        # remove old images after update
+  #     - WATCHTOWER_INCLUDE_RESTARTING=true
+
 volumes:
   pgdata:

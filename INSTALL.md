@@ -842,7 +842,9 @@ dicom-archive/
 
 ## 16. Updating
 
-To pull the latest code and rebuild:
+### Manual update (current default)
+
+Pull the latest code and rebuild:
 
 ```bash
 git pull
@@ -854,6 +856,46 @@ docker compose up -d
 The database schema updates automatically on startup — new columns are added
 non-destructively and existing data is preserved. Agents re-register automatically
 when they restart.
+
+> The agent container will be unavailable for a few seconds during restart.
+> Any C-STORE associations attempted during that window will fail at the modality
+> and should be retried. Images already stored are unaffected.
+
+---
+
+### Automatic updates with Watchtower (optional, future)
+
+[Watchtower](https://containrrr.dev/watchtower/) monitors running containers and
+restarts them automatically when a new image is available in a container registry.
+This is useful when agents are deployed at multiple sites and manual SSH + rebuild
+on each host becomes impractical.
+
+**Prerequisites:**
+- Images must be published to a registry (Docker Hub, GitHub Container Registry, etc.)
+  rather than built locally. This requires a CI/CD pipeline (e.g. GitHub Actions)
+  that builds and pushes a new image on every code change.
+
+**To enable:** open `docker-compose.yml` and uncomment the `watchtower` service block
+at the bottom of the file. The configuration is already written — it just needs
+uncommenting:
+
+```yaml
+watchtower:
+  image: containrrr/watchtower
+  restart: unless-stopped
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+  command: --interval 3600 dicom-archive-agent-1 dicom-archive-server-1
+  environment:
+    - WATCHTOWER_CLEANUP=true
+```
+
+Once enabled, Watchtower checks for new images every hour and restarts the agent
+and server containers if updates are found. Postgres is intentionally excluded —
+database updates are handled by the application schema migration on startup.
+
+**Update cadence:** the `--interval 3600` value is in seconds (1 hour). Adjust to
+taste — `86400` for daily, `300` for every 5 minutes during active development.
 
 ---
 
