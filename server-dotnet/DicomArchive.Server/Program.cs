@@ -41,6 +41,15 @@ app.UseDefaultFiles();
 app.UseStaticFiles();   // serves wwwroot/index.html
 app.MapDefaultEndpoints(); // Aspire health + liveness probes
 
+// ── Schema initialization ─────────────────────────────────────────────────────
+// Run DDL on startup so the .NET server can work with a fresh Aspire Postgres
+// container. All statements are CREATE TABLE IF NOT EXISTS — safe on existing DBs.
+using (var scope = app.Services.CreateScope())
+{
+    var initLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    await SchemaInitializer.RunAsync(scope.ServiceProvider, initLogger);
+}
+
 // ── API routes ────────────────────────────────────────────────────────────────
 StudyEndpoints.Map(app);
 DestinationEndpoints.Map(app);
