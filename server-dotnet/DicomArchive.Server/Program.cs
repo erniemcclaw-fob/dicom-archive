@@ -15,7 +15,13 @@ builder.AddServiceDefaults();
 // from the AppHost's postgres resource reference.
 // When running standalone, it reads from CONNECTIONSTRINGS__dicom-archive
 // or DATABASE_URL in the environment.
+//
+// We register both:
+//  - AddNpgsqlDbContext  → scoped ArchiveDbContext for Minimal API endpoints
+//  - AddDbContextFactory → IDbContextFactory for RouterService + QueueProcessorService
+//    (background services need to create their own scopes)
 builder.AddNpgsqlDbContext<ArchiveDbContext>("dicom-archive");
+builder.Services.AddDbContextFactory<ArchiveDbContext>(lifetime: ServiceLifetime.Scoped);
 
 // ── Application services ──────────────────────────────────────────────────────
 builder.Services.AddScoped<RouterService>();
