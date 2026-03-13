@@ -6,10 +6,15 @@ var postgres = builder.AddPostgres("postgres")
     .WithPgAdmin()
     .AddDatabase("dicom-archive");
 
+// ── Seq (structured logging) ─────────────────────────────────────────────────
+var seq = builder.AddSeq("seq")
+    .ExcludeFromManifest();
+
 // ── .NET Server ───────────────────────────────────────────────────────────────
 var server = builder.AddProject<Projects.DicomArchive_Server>("dicom-server")
     .WithReference(postgres)
     .WaitFor(postgres)
+    .WithReference(seq)
     .WithHttpEndpoint(port: 8080, name: "web");
 
 // ── Python Ingest Agent ───────────────────────────────────────────────────────
@@ -24,6 +29,7 @@ builder.AddDockerfile("dicom-agent", "../../agent")
     .WithEnvironment("AE_TITLE",           "ARCHIVE_SCP")
     .WithEnvironment("LISTEN_PORT",        "11112")
     .WithEnvironment("ROUTER_URL",         server.GetEndpoint("web"))
+    .WithEnvironment("SEQ_URL",            seq.GetEndpoint("http"))
     .WithBindMount("../../data/received",   "/data/received")
     .WithBindMount("../../data/quarantine", "/data/quarantine")
     .WithEndpoint(port: 11112, targetPort: 11112, scheme: "tcp", name: "dicom")

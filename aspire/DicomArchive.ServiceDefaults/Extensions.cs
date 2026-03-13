@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.ServiceDiscovery;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using Serilog;
 
 namespace Microsoft.Extensions.Hosting;
 
@@ -20,6 +22,8 @@ public static class Extensions
 
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
+        builder.ConfigureSerilog();
+
         builder.ConfigureOpenTelemetry();
 
         builder.AddDefaultHealthChecks();
@@ -94,6 +98,24 @@ public static class Extensions
         //    builder.Services.AddOpenTelemetry()
         //       .UseAzureMonitor();
         //}
+
+        return builder;
+    }
+
+    public static TBuilder ConfigureSerilog<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
+    {
+        builder.Services.AddSerilog((services, loggerConfig) =>
+        {
+            loggerConfig
+                .ReadFrom.Configuration(builder.Configuration)
+                .Enrich.FromLogContext()
+                .Enrich.WithProperty("ServiceName", builder.Environment.ApplicationName)
+                .WriteTo.Console();
+
+            var seqUrl = builder.Configuration.GetConnectionString("seq");
+            if (!string.IsNullOrWhiteSpace(seqUrl))
+                loggerConfig.WriteTo.Seq(seqUrl);
+        }, writeToProviders: true);
 
         return builder;
     }

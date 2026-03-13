@@ -37,15 +37,30 @@ from database import get_database
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("agent.log"),
-    ]
-)
-logger = logging.getLogger("dicom-agent")
+SEQ_URL = os.getenv("SEQ_URL", "").rstrip("/")
+
+if SEQ_URL:
+    from seqlog import log_to_seq
+    log_to_seq(
+        server_url=SEQ_URL,
+        level=logging.INFO,
+        batch_size=10,
+        auto_flush_timeout=2,
+        override_root_logger=True,
+        additional_handlers=[logging.StreamHandler(sys.stdout)],
+    )
+    logger = logging.getLogger("dicom-agent")
+    logger.info("Seq logging enabled at %s", SEQ_URL)
+else:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler("agent.log"),
+        ]
+    )
+    logger = logging.getLogger("dicom-agent")
 
 AGENT_VERSION = "1.0.0"
 

@@ -4,3 +4,4 @@ psycopg2-binary>=2.9.0
 boto3>=1.26.0
 azure-storage-blob>=12.14.0
 python-dotenv>=1.0.0
+seqlog>=0.3.28
