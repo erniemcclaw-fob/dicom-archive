@@ -22,7 +22,7 @@ public static class InternalEndpoints
     static async Task<IResult> Register(ArchiveDbContext db, AgentRegistration? body,
         ILogger<Program> logger)
     {
-        if (body is null) return Results.BadRequest("Missing body");
+        if (body?.AeTitle is null) return Results.BadRequest("Missing body or ae_title");
         var ae = body.AeTitle.ToUpper();
 
         var agent = await db.Agents.FirstOrDefaultAsync(a => a.AeTitle == ae);
@@ -45,7 +45,7 @@ public static class InternalEndpoints
 
     static async Task<IResult> Heartbeat(ArchiveDbContext db, AgentHeartbeat? body)
     {
-        if (body is null) return Results.BadRequest("Missing body");
+        if (body?.AeTitle is null) return Results.BadRequest("Missing body or ae_title");
         var ae = body.AeTitle.ToUpper();
         var agent = await db.Agents.FirstOrDefaultAsync(a => a.AeTitle == ae);
 

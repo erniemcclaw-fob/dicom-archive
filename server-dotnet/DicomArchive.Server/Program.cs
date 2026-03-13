@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DicomArchive.Server.Data;
 using DicomArchive.Server.Endpoints;
 using DicomArchive.Server.Services;
@@ -28,6 +29,8 @@ builder.Services.AddScoped<RouterService>();
 builder.Services.AddScoped<StorageService>();
 builder.Services.AddHostedService<QueueProcessorService>();
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+builder.Services.ConfigureHttpJsonOptions(o =>
+    o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower);
 
 // Register the DicomArchive.Router ActivitySource for OpenTelemetry tracing
 builder.Services.AddOpenTelemetry()

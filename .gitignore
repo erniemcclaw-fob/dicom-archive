@@ -11,4 +11,5 @@ __pycache__/
 *.user
 *.suo
 .DS_Store
+.venv/
 agent.log
