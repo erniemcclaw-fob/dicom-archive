@@ -232,6 +232,20 @@ def handle_store(event):
             "body_part":       str(getattr(ds, "BodyPartExamined", "") or ""),
             "file_size_bytes": size_bytes,
             "sha256":          checksum,
+            # Exam-level
+            "study_description":    str(getattr(ds, "StudyDescription", "") or "") or None,
+            "accession_number":     str(getattr(ds, "AccessionNumber", "") or "") or None,
+            "referring_physician":  str(getattr(ds, "ReferringPhysicianName", "") or "") or None,
+            # Series-level
+            "series_number":        int(getattr(ds, "SeriesNumber", 0) or 0) or None,
+            "series_description":   str(getattr(ds, "SeriesDescription", "") or "") or None,
+            "laterality":           str(getattr(ds, "Laterality", "") or "") or None,
+            "view_position":        str(getattr(ds, "ViewPosition", "") or "") or None,
+            # Instance-level
+            "instance_number":      int(getattr(ds, "InstanceNumber", 0) or 0) or None,
+            "transfer_syntax":      str(getattr(ds.file_meta, "TransferSyntaxUID", "") or "") or None,
+            "rows":                 int(getattr(ds, "Rows", 0) or 0) or None,
+            "columns":              int(getattr(ds, "Columns", 0) or 0) or None,
         }
 
         # ── Enqueue for async upload ──

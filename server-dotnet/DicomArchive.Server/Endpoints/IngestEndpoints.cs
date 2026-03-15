@@ -82,23 +82,39 @@ public static class IngestEndpoints
 
         // ── Upsert exam ──
         var examId = await UpsertReturningIdAsync(db, """
-            INSERT INTO exams (patient_id, study_uid, study_date, modality, created_at)
-            VALUES (@p0, @p1, @p2, @p3, NOW())
+            INSERT INTO exams (patient_id, study_uid, study_date, modality,
+                               accession, description, referring_physician, created_at)
+            VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, NOW())
             ON CONFLICT (study_uid) DO UPDATE
-                SET study_date = COALESCE(EXCLUDED.study_date, exams.study_date)
+                SET study_date          = COALESCE(EXCLUDED.study_date, exams.study_date),
+                    accession           = COALESCE(EXCLUDED.accession, exams.accession),
+                    description         = COALESCE(EXCLUDED.description, exams.description),
+                    referring_physician = COALESCE(EXCLUDED.referring_physician, exams.referring_physician)
             RETURNING id
             """, patientId, body.StudyUid ?? "",
                  (object?)ParseDate(body.StudyDate) ?? DBNull.Value,
-                 body.Modality);
+                 body.Modality,
+                 (object?)body.AccessionNumber ?? DBNull.Value,
+                 (object?)body.StudyDescription ?? DBNull.Value,
+                 (object?)body.ReferringPhysician ?? DBNull.Value);
 
         // ── Upsert series ──
         var seriesId = await UpsertReturningIdAsync(db, """
-            INSERT INTO series (exam_id, series_uid, body_part, created_at)
-            VALUES (@p0, @p1, @p2, NOW())
+            INSERT INTO series (exam_id, series_uid, body_part,
+                                series_number, description, laterality, view_position, created_at)
+            VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, NOW())
             ON CONFLICT (series_uid) DO UPDATE
-                SET body_part = COALESCE(EXCLUDED.body_part, series.body_part)
+                SET body_part      = COALESCE(EXCLUDED.body_part, series.body_part),
+                    series_number  = COALESCE(EXCLUDED.series_number, series.series_number),
+                    description    = COALESCE(EXCLUDED.description, series.description),
+                    laterality     = COALESCE(EXCLUDED.laterality, series.laterality),
+                    view_position  = COALESCE(EXCLUDED.view_position, series.view_position)
             RETURNING id
-            """, examId, body.SeriesUid ?? "", body.BodyPart);
+            """, examId, body.SeriesUid ?? "", body.BodyPart,
+                 (object?)body.SeriesNumber ?? DBNull.Value,
+                 (object?)body.SeriesDescription ?? DBNull.Value,
+                 (object?)body.Laterality ?? DBNull.Value,
+                 (object?)body.ViewPosition ?? DBNull.Value);
 
         // ── Build blob key ──
         var studyDate = body.StudyDate ?? "UNKNOWN";
@@ -107,16 +123,27 @@ public static class IngestEndpoints
         // ── Upsert instance (status=pending) ──
         var instanceId = await UpsertReturningIdAsync(db, """
             INSERT INTO instances (series_id, instance_uid, blob_key, size_bytes, sha256,
-                                   sending_ae, receiving_ae, received_at, status)
-            VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, NOW(), 'pending')
+                                   sending_ae, receiving_ae, received_at, status,
+                                   instance_number, transfer_syntax, rows, columns)
+            VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, NOW(), 'pending', @p7, @p8, @p9, @p10)
             ON CONFLICT (instance_uid) DO UPDATE
-                SET status = 'pending', sha256 = EXCLUDED.sha256, blob_key = EXCLUDED.blob_key
+                SET status          = 'pending',
+                    sha256          = EXCLUDED.sha256,
+                    blob_key        = EXCLUDED.blob_key,
+                    instance_number = COALESCE(EXCLUDED.instance_number, instances.instance_number),
+                    transfer_syntax = COALESCE(EXCLUDED.transfer_syntax, instances.transfer_syntax),
+                    rows            = COALESCE(EXCLUDED.rows, instances.rows),
+                    columns         = COALESCE(EXCLUDED.columns, instances.columns)
             RETURNING id
             """, seriesId, body.InstanceUid, blobKey,
                  (object?)body.FileSizeBytes ?? DBNull.Value,
                  body.Sha256,
                  body.SendingAe,
-                 body.AeTitle);
+                 body.AeTitle,
+                 (object?)body.InstanceNumber ?? DBNull.Value,
+                 (object?)body.TransferSyntax ?? DBNull.Value,
+                 (object?)body.Rows ?? DBNull.Value,
+                 (object?)body.Columns ?? DBNull.Value);
 
         // ── Build upload URL ──
         // Return a server-proxied upload URL. The agent PUTs the file here; the server
@@ -300,6 +327,20 @@ public record PrepareRequest
     public string? BodyPart { get; init; }
     public long? FileSizeBytes { get; init; }
     public string? Sha256 { get; init; }
+    // Exam-level
+    public string? StudyDescription { get; init; }
+    public string? AccessionNumber { get; init; }
+    public string? ReferringPhysician { get; init; }
+    // Series-level
+    public int? SeriesNumber { get; init; }
+    public string? SeriesDescription { get; init; }
+    public string? Laterality { get; init; }
+    public string? ViewPosition { get; init; }
+    // Instance-level
+    public int? InstanceNumber { get; init; }
+    public string? TransferSyntax { get; init; }
+    public int? Rows { get; init; }
+    public int? Columns { get; init; }
 }
 
 public record ConfirmRequest
