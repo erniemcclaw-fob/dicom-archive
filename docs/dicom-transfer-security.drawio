@@ -1,0 +1,467 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-03-14T00:00:00.000Z" type="device">
+  <diagram id="transfer-security" name="Current State — Transfer &amp; Security">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="DICOM Archive — Current Transfer &amp; Security Architecture" style="text;html=1;fontSize=18;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="600" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════ EXTERNAL ZONE ═══════════════ -->
+        <mxCell id="zone_external" value="External / Modality Network" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="250" height="340" as="geometry" />
+        </mxCell>
+
+        <!-- Modality -->
+        <mxCell id="modality" value="&lt;b&gt;Modality / PACS&lt;/b&gt;&lt;br&gt;(MG, CT, MR, etc.)" style="shape=mxgraph.cisco.computers_and_peripherals.printer;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="100" y="140" width="80" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Rogue agent -->
+        <mxCell id="rogue" value="&lt;b&gt;⚠ Rogue Agent&lt;/b&gt;&lt;br&gt;(any HTTP client)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="70" y="280" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rogue_note" value="Nothing prevents&lt;br&gt;unauthorized access" style="text;html=1;fontSize=10;fontColor=#b85450;align=center;" vertex="1" parent="1">
+          <mxGeometry x="70" y="335" width="160" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Browser -->
+        <mxCell id="browser" value="&lt;b&gt;Browser&lt;/b&gt;&lt;br&gt;Web UI / OHIF" style="shape=mxgraph.cisco.computers_and_peripherals.laptop;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="100" y="440" width="80" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════ DOCKER / ASPIRE NETWORK ═══════════════ -->
+        <mxCell id="zone_docker" value="Docker / Aspire Internal Network" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="360" y="80" width="850" height="520" as="geometry" />
+        </mxCell>
+
+        <!-- ─── Agent Box ─── -->
+        <mxCell id="agent_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;verticalAlign=top;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="400" y="120" width="280" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="agent_title" value="&lt;b&gt;Ingest Agent&lt;/b&gt;  (Python :11112)" style="text;html=1;fontSize=13;fontStyle=0;align=center;" vertex="1" parent="1">
+          <mxGeometry x="420" y="128" width="240" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Agent sub-components -->
+        <mxCell id="agent_scp" value="&lt;b&gt;C-STORE SCP&lt;/b&gt;&lt;br&gt;pynetdicom&lt;br&gt;Accepts ALL SOP classes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="420" y="160" width="240" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="agent_validate" value="&lt;b&gt;Validate &amp; Hash&lt;/b&gt;&lt;br&gt;Check UIDs, PixelData&lt;br&gt;SHA-256 checksum" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="420" y="225" width="240" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="agent_store" value="&lt;b&gt;Store to Blob&lt;/b&gt;&lt;br&gt;Local FS / S3 / Azure Blob&lt;br&gt;Path: YYYYMMDD/study/series/inst.dcm" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="420" y="285" width="240" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="agent_index" value="&lt;b&gt;Index in DB&lt;/b&gt;&lt;br&gt;Upsert patient→exam→series→instance" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="420" y="350" width="240" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- ─── .NET Server Box ─── -->
+        <mxCell id="server_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="780" y="120" width="400" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="server_title" value="&lt;b&gt;.NET Server&lt;/b&gt;  (ASP.NET :8080)" style="text;html=1;fontSize=13;fontStyle=0;align=center;" vertex="1" parent="1">
+          <mxGeometry x="830" y="128" width="300" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="server_internal" value="&lt;b&gt;/internal/* Endpoints&lt;/b&gt;&lt;br&gt;POST /internal/register&lt;br&gt;POST /internal/heartbeat&lt;br&gt;POST /internal/routed&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;⚠ NO AUTH — accepts any caller&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="800" y="160" width="230" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="server_api" value="&lt;b&gt;/api/* REST Endpoints&lt;/b&gt;&lt;br&gt;GET /api/studies, /api/rules, ...&lt;br&gt;POST /api/destinations, /api/rules&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;⚠ NO AUTH — full read/write&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="800" y="260" width="230" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="server_router" value="&lt;b&gt;Router Service&lt;/b&gt;&lt;br&gt;Rule evaluation → C-STORE SCU&lt;br&gt;Queue processor (30s)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="160" width="120" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="server_wado" value="&lt;b&gt;WADO-RS&lt;/b&gt;&lt;br&gt;File retrieval&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;⚠ NO AUTH&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="260" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="server_cors" value="CORS: AllowAnyOrigin()&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;⚠ Wide open&lt;/font&gt;" style="text;html=1;fontSize=10;fontColor=#b85450;align=center;" vertex="1" parent="1">
+          <mxGeometry x="800" y="348" width="180" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ─── PostgreSQL ─── -->
+        <mxCell id="postgres" value="&lt;b&gt;PostgreSQL&lt;/b&gt;&lt;br&gt;dicom_archive&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;⚠ Default password&lt;br&gt;⚠ Port 5432 exposed&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="470" width="160" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- ─── Blob Storage ─── -->
+        <mxCell id="blob" value="&lt;b&gt;Blob Storage&lt;/b&gt;&lt;br&gt;Local FS / S3 / Azure" style="shape=mxgraph.aws3.s3;html=1;fillColor=#E05243;strokeColor=none;fontSize=11;fontColor=#FFFFFF;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="990" y="480" width="60" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ─── Downstream PACS ─── -->
+        <mxCell id="downstream" value="&lt;b&gt;Downstream&lt;/b&gt;&lt;br&gt;PACS / Workstation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="160" width="130" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════ ARROWS ═══════════════ -->
+
+        <!-- Modality → Agent (DICOM C-STORE) -->
+        <mxCell id="arrow1" value="C-STORE (DICOM)&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;No TLS&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#6c8ebf;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="modality" target="agent_scp" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Agent internal flow (vertical) -->
+        <mxCell id="arrow_a1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=1;strokeColor=#9673a6;" edge="1" source="agent_scp" target="agent_validate" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow_a2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=1;strokeColor=#9673a6;" edge="1" source="agent_validate" target="agent_store" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow_a3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=1;strokeColor=#9673a6;" edge="1" source="agent_store" target="agent_index" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Agent → Server (HTTP POST /internal/routed) -->
+        <mxCell id="arrow2" value="HTTP POST&lt;br&gt;/internal/register&lt;br&gt;/internal/heartbeat&lt;br&gt;/internal/routed&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;⚠ Plain HTTP, no auth&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#82b366;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="agent_store" target="server_internal" parent="1">
+          <mxGeometry x="0.1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Rogue → Server (HTTP) -->
+        <mxCell id="arrow_rogue" value="&lt;font color=&quot;#b85450&quot;&gt;⚠ Same HTTP POST&lt;br&gt;No way to distinguish&lt;br&gt;from real agent&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#b85450;dashed=1;fontSize=10;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" source="rogue" target="server_internal" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="330" y="305" />
+              <mxPoint x="330" y="130" />
+              <mxPoint x="780" y="130" />
+              <mxPoint x="780" y="205" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Browser → Server (HTTP) -->
+        <mxCell id="arrow_browser" value="HTTP :8080&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;No auth, no HTTPS&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#6c8ebf;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="browser" target="server_api" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="330" y="470" />
+              <mxPoint x="330" y="440" />
+              <mxPoint x="770" y="440" />
+              <mxPoint x="770" y="300" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Agent → PostgreSQL -->
+        <mxCell id="arrow3" value="psycopg2&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;No SSL&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#d6b656;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="agent_index" target="postgres" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Server → PostgreSQL -->
+        <mxCell id="arrow4" value="EF Core&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;No SSL&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#d6b656;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="server_api" target="postgres" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="780" y="390" />
+              <mxPoint x="780" y="510" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Agent → Blob Storage -->
+        <mxCell id="arrow5" value=".dcm files" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#E05243;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="agent_store" target="blob" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="700" y="312" />
+              <mxPoint x="700" y="450" />
+              <mxPoint x="1020" y="450" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Server → Blob Storage (reads) -->
+        <mxCell id="arrow6" value="reads .dcm" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#E05243;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="server_wado" target="blob" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Router → Downstream PACS -->
+        <mxCell id="arrow7" value="C-STORE SCU&lt;br&gt;(forwarding)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#6c8ebf;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="server_router" target="downstream" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════ LEGEND ═══════════════ -->
+        <mxCell id="legend_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="540" width="280" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_title" value="&lt;b&gt;Security Issues (Current State)&lt;/b&gt;" style="text;html=1;fontSize=11;fontStyle=0;align=left;spacingLeft=4;" vertex="1" parent="1">
+          <mxGeometry x="50" y="545" width="250" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend1" value="&lt;font color=&quot;#b85450&quot;&gt;⚠&lt;/font&gt; All agent→server comms: plain HTTP, no auth" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="1">
+          <mxGeometry x="50" y="565" width="260" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="legend2" value="&lt;font color=&quot;#b85450&quot;&gt;⚠&lt;/font&gt; /internal/* endpoints accept any caller" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="1">
+          <mxGeometry x="50" y="581" width="260" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="legend3" value="&lt;font color=&quot;#b85450&quot;&gt;⚠&lt;/font&gt; /api/* and WADO-RS: no authentication" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="1">
+          <mxGeometry x="50" y="597" width="260" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="legend4" value="&lt;font color=&quot;#b85450&quot;&gt;⚠&lt;/font&gt; CORS wide open: AllowAnyOrigin()" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="1">
+          <mxGeometry x="50" y="613" width="260" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="legend5" value="&lt;font color=&quot;#b85450&quot;&gt;⚠&lt;/font&gt; DB: default password, port exposed" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="1">
+          <mxGeometry x="50" y="629" width="260" height="16" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="recommended-state" name="Recommended — Edge Agent + Cloud Architecture">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="r0" />
+        <mxCell id="r1" parent="r0" />
+
+        <!-- Title -->
+        <mxCell id="r_title" value="DICOM Archive — Recommended: Edge Agent → Cloud (Secure, Parallel Upload)" style="text;html=1;fontSize=18;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="r1">
+          <mxGeometry x="300" y="15" width="900" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════ LOCAL SITE (LAN) ═══════════════ -->
+        <mxCell id="r_zone_local" value="Local Site (Hospital / Clinic LAN)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;verticalAlign=top;fontStyle=1;fontSize=14;arcSize=6;" vertex="1" parent="r1">
+          <mxGeometry x="40" y="70" width="520" height="540" as="geometry" />
+        </mxCell>
+
+        <!-- Modality -->
+        <mxCell id="r_modality" value="&lt;b&gt;Modality / PACS&lt;/b&gt;&lt;br&gt;(MG, CT, MR, etc.)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="r1">
+          <mxGeometry x="70" y="140" width="150" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Agent Box -->
+        <mxCell id="r_agent_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f0fa;strokeColor=#9673a6;verticalAlign=top;arcSize=6;" vertex="1" parent="r1">
+          <mxGeometry x="60" y="240" width="480" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="r_agent_title" value="&lt;b&gt;Ingest Agent&lt;/b&gt;  (Python, edge device, :11112)" style="text;html=1;fontSize=13;align=center;" vertex="1" parent="r1">
+          <mxGeometry x="120" y="248" width="360" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_agent_scp" value="&lt;b&gt;C-STORE SCP&lt;/b&gt;&lt;br&gt;pynetdicom (no TLS needed on LAN)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="r1">
+          <mxGeometry x="80" y="280" width="220" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_agent_validate" value="&lt;b&gt;Validate &amp; Hash&lt;/b&gt;&lt;br&gt;Check UIDs, PixelData, SHA-256" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="r1">
+          <mxGeometry x="80" y="330" width="220" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_agent_local" value="&lt;b&gt;Local Staging&lt;/b&gt;&lt;br&gt;Save .dcm to local disk&lt;br&gt;(temporary, until uploaded)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="r1">
+          <mxGeometry x="80" y="380" width="220" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Upload Engine -->
+        <mxCell id="r_upload_engine" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;verticalAlign=top;arcSize=8;" vertex="1" parent="r1">
+          <mxGeometry x="320" y="280" width="200" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="r_upload_title" value="&lt;b&gt;Upload Engine&lt;/b&gt;&lt;br&gt;(asyncio / thread pool)" style="text;html=1;fontSize=11;align=center;fontColor=#28a745;" vertex="1" parent="r1">
+          <mxGeometry x="330" y="285" width="180" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_step1" value="&lt;b&gt;① Request Upload URL&lt;/b&gt;&lt;br&gt;POST /ingest/prepare&lt;br&gt;+ X-Api-Key header&lt;br&gt;Sends DICOM metadata" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="r1">
+          <mxGeometry x="335" y="320" width="170" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_step2" value="&lt;b&gt;② Upload .dcm&lt;/b&gt;&lt;br&gt;PUT to pre-signed URL&lt;br&gt;Direct to blob storage&lt;br&gt;&lt;font color=&quot;#28a745&quot;&gt;✓ Parallel (N workers)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="r1">
+          <mxGeometry x="335" y="390" width="170" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_step3" value="&lt;b&gt;③ Confirm Upload&lt;/b&gt;&lt;br&gt;POST /ingest/confirm&lt;br&gt;Triggers routing engine" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="r1">
+          <mxGeometry x="335" y="460" width="170" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_cleanup" value="&lt;b&gt;④ Cleanup&lt;/b&gt;&lt;br&gt;Delete local staging file" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="r1">
+          <mxGeometry x="335" y="518" width="170" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Agent flow arrows -->
+        <mxCell id="r_af1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=1;strokeColor=#9673a6;" edge="1" source="r_agent_scp" target="r_agent_validate" parent="r1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r_af2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=1;strokeColor=#9673a6;" edge="1" source="r_agent_validate" target="r_agent_local" parent="r1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r_af3" value="queue" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#28a745;fontSize=10;" edge="1" source="r_agent_local" target="r_step1" parent="r1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Modality → Agent -->
+        <mxCell id="r_arr_mod" value="C-STORE (DICOM)&lt;br&gt;LAN — no TLS needed" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#6c8ebf;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="r_modality" target="r_agent_scp" parent="r1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════ INTERNET BOUNDARY ═══════════════ -->
+        <mxCell id="r_internet" value="Internet (HTTPS)" style="text;html=1;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;fontColor=#E05243;" vertex="1" parent="r1">
+          <mxGeometry x="570" y="350" width="130" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="r_internet_line" value="" style="shape=line;strokeColor=#E05243;strokeWidth=3;dashed=1;html=1;rotation=90;" vertex="1" parent="r1">
+          <mxGeometry x="580" y="300" width="110" height="10" as="geometry" />
+        </mxCell>
+        <mxCell id="r_internet_line2" value="" style="shape=line;strokeColor=#E05243;strokeWidth=3;dashed=1;html=1;rotation=90;" vertex="1" parent="r1">
+          <mxGeometry x="580" y="440" width="110" height="10" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════ CLOUD ZONE ═══════════════ -->
+        <mxCell id="r_zone_cloud" value="Cloud Infrastructure (Azure / AWS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f3ff;strokeColor=#4d94ff;dashed=1;verticalAlign=top;fontStyle=1;fontSize=14;arcSize=6;" vertex="1" parent="r1">
+          <mxGeometry x="700" y="70" width="560" height="540" as="geometry" />
+        </mxCell>
+
+        <!-- .NET Server -->
+        <mxCell id="r_server_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;arcSize=8;" vertex="1" parent="r1">
+          <mxGeometry x="720" y="110" width="310" height="310" as="geometry" />
+        </mxCell>
+        <mxCell id="r_server_title" value="&lt;b&gt;.NET Server&lt;/b&gt;  (ASP.NET, HTTPS :443)" style="text;html=1;fontSize=13;align=center;" vertex="1" parent="r1">
+          <mxGeometry x="730" y="118" width="290" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_server_auth" value="&lt;b&gt;API Key Middleware&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#28a745&quot;&gt;✓ Validates X-Api-Key on /ingest/*&lt;br&gt;✓ Rejects unauthenticated agents&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="r1">
+          <mxGeometry x="740" y="150" width="270" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_server_prepare" value="&lt;b&gt;POST /ingest/prepare&lt;/b&gt;&lt;br&gt;1. Upserts patient/exam/series/instance&lt;br&gt;2. Generates SAS token / pre-signed URL&lt;br&gt;3. Returns upload URL + instance ID" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="r1">
+          <mxGeometry x="740" y="215" width="270" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_server_confirm" value="&lt;b&gt;POST /ingest/confirm&lt;/b&gt;&lt;br&gt;1. Verifies blob exists in storage&lt;br&gt;2. Marks instance as &quot;stored&quot;&lt;br&gt;3. Triggers routing engine" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="r1">
+          <mxGeometry x="740" y="290" width="270" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_server_other" value="&lt;b&gt;REST API + WADO-RS + Router&lt;/b&gt;&lt;br&gt;(existing endpoints, unchanged)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="r1">
+          <mxGeometry x="740" y="365" width="270" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- PostgreSQL -->
+        <mxCell id="r_postgres" value="&lt;b&gt;PostgreSQL&lt;/b&gt;&lt;br&gt;dicom_archive&lt;br&gt;&lt;font color=&quot;#28a745&quot;&gt;✓ Internal only&lt;br&gt;✓ No agent access&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#d4edda;strokeColor=#28a745;fontSize=11;" vertex="1" parent="r1">
+          <mxGeometry x="730" y="460" width="150" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Blob Storage -->
+        <mxCell id="r_blob" value="&lt;b&gt;Azure Blob / S3&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#28a745&quot;&gt;✓ SAS token / pre-signed URL&lt;br&gt;✓ Time-limited write access&lt;br&gt;✓ Server uses managed identity&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d4edda;strokeColor=#28a745;fontSize=11;" vertex="1" parent="r1">
+          <mxGeometry x="1060" y="200" width="180" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Browser -->
+        <mxCell id="r_browser" value="&lt;b&gt;Browser&lt;/b&gt;&lt;br&gt;Web UI / OHIF" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="r1">
+          <mxGeometry x="1100" y="380" width="120" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Downstream -->
+        <mxCell id="r_downstream" value="&lt;b&gt;Downstream&lt;/b&gt;&lt;br&gt;PACS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="r1">
+          <mxGeometry x="1100" y="460" width="120" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Rogue blocked -->
+        <mxCell id="r_rogue" value="&lt;b&gt;Rogue Agent&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;fontColor=#999999;" vertex="1" parent="r1">
+          <mxGeometry x="1100" y="110" width="120" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="r_rogue_block" value="&lt;font color=&quot;#cc0000&quot;&gt;✗ BLOCKED&lt;br&gt;No API key&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#cc0000;dashed=1;fontSize=10;labelBackgroundColor=#ffffff;endArrow=block;endFill=1;" edge="1" source="r_rogue" target="r_server_auth" parent="r1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════ CROSS-BOUNDARY ARROWS ═══════════════ -->
+
+        <!-- Step 1: Agent → Server (prepare) -->
+        <mxCell id="r_arr_prepare" value="&lt;font color=&quot;#28a745&quot;&gt;HTTPS + X-Api-Key&lt;br&gt;① Metadata + request URL&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#28a745;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="r_step1" target="r_server_prepare" parent="r1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="630" y="350" />
+              <mxPoint x="630" y="247" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 2: Agent → Blob Storage (direct upload) -->
+        <mxCell id="r_arr_upload" value="&lt;font color=&quot;#E05243&quot;&gt;&lt;b&gt;② PUT .dcm (parallel)&lt;/b&gt;&lt;br&gt;HTTPS via SAS / pre-signed URL&lt;br&gt;Direct to storage — bypasses server&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=3;strokeColor=#E05243;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="r_step2" target="r_blob" parent="r1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="660" y="420" />
+              <mxPoint x="660" y="240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 3: Agent → Server (confirm) -->
+        <mxCell id="r_arr_confirm" value="&lt;font color=&quot;#28a745&quot;&gt;HTTPS + X-Api-Key&lt;br&gt;③ Confirm + trigger routing&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#28a745;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="r_step3" target="r_server_confirm" parent="r1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="600" y="485" />
+              <mxPoint x="600" y="322" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Server → PostgreSQL -->
+        <mxCell id="r_arr_db" value="EF Core" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#d6b656;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="r_server_confirm" target="r_postgres" parent="r1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Server → Blob (reads) -->
+        <mxCell id="r_arr_read" value="reads .dcm&lt;br&gt;(managed identity)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#E05243;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="r_server_other" target="r_blob" parent="r1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1050" y="385" />
+              <mxPoint x="1050" y="260" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Browser → Server -->
+        <mxCell id="r_arr_browser" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#6c8ebf;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="r_browser" target="r_server_other" parent="r1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Server → Downstream -->
+        <mxCell id="r_arr_downstream" value="C-STORE SCU&lt;br&gt;(routing)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#6c8ebf;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" source="r_server_confirm" target="r_downstream" parent="r1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1050" y="350" />
+              <mxPoint x="1050" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ═══════════════ LEGEND ═══════════════ -->
+        <mxCell id="r_legend_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;arcSize=10;" vertex="1" parent="r1">
+          <mxGeometry x="40" y="640" width="560" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="r_legend_title" value="&lt;b&gt;Key Design Decisions&lt;/b&gt;" style="text;html=1;fontSize=12;fontStyle=0;align=left;spacingLeft=4;" vertex="1" parent="r1">
+          <mxGeometry x="50" y="645" width="250" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="r_leg1" value="&lt;font color=&quot;#28a745&quot;&gt;✓&lt;/font&gt; Agent is edge device on LAN — no DB access, no cloud storage creds" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="r1">
+          <mxGeometry x="50" y="665" width="380" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="r_leg2" value="&lt;font color=&quot;#28a745&quot;&gt;✓&lt;/font&gt; Pre-signed URLs: agent uploads direct to blob (server not in data path)" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="r1">
+          <mxGeometry x="50" y="681" width="380" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="r_leg3" value="&lt;font color=&quot;#28a745&quot;&gt;✓&lt;/font&gt; Parallel upload workers maximize network throughput" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="r1">
+          <mxGeometry x="50" y="697" width="380" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="r_leg4" value="&lt;font color=&quot;#28a745&quot;&gt;✓&lt;/font&gt; API Key auth blocks rogue agents — only the ① and ③ control calls need it" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="r1">
+          <mxGeometry x="50" y="713" width="400" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="r_leg5" value="&lt;font color=&quot;#28a745&quot;&gt;✓&lt;/font&gt; 3-step handshake: prepare → upload → confirm (tracks failed uploads)" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="r1">
+          <mxGeometry x="430" y="665" width="380" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="r_leg6" value="&lt;font color=&quot;#28a745&quot;&gt;✓&lt;/font&gt; SAS tokens are time-limited and scoped to specific blob paths" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="r1">
+          <mxGeometry x="430" y="681" width="380" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="r_leg7" value="&lt;font color=&quot;#28a745&quot;&gt;✓&lt;/font&gt; No DICOM TLS needed — modality and agent share trusted LAN" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="r1">
+          <mxGeometry x="430" y="697" width="380" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="r_leg8" value="&lt;font color=&quot;#28a745&quot;&gt;✓&lt;/font&gt; PostgreSQL: cloud-internal only, no external access" style="text;html=1;fontSize=10;align=left;spacingLeft=4;" vertex="1" parent="r1">
+          <mxGeometry x="430" y="713" width="380" height="16" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

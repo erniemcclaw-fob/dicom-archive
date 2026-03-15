@@ -3,26 +3,25 @@ version: "3.9"
 services:
 
   # ── Ingest agent — accepts DICOM C-STORE from modalities ────────────────────
+  # Runs on the hospital LAN. Has NO direct database access and NO cloud
+  # storage credentials. All metadata writes go through the server API.
+  # File uploads use pre-signed URLs / SAS tokens from the server.
   agent:
     build: ./agent
     restart: unless-stopped
     ports:
       - "11112:11112"      # DICOM port — open to modality network
     volumes:
-      - ./data/received:/data/received
+      - ./data/staging:/data/staging
       - ./data/quarantine:/data/quarantine
     env_file:
       - ./agent/.env
     environment:
-      DATABASE_URL: postgresql://dicom:changeme@postgres:5432/dicom_archive
-      STORAGE_BACKEND: local
-      LOCAL_STORAGE_PATH: /data/received
-      # Notify the server after each store so on_receive rules fire immediately.
-      # Remove this line to rely solely on the 30s queue processor.
-      ROUTER_URL: http://server:8080
+      SERVER_URL: http://server:8080
+      AGENT_API_KEY: ${AGENT_API_KEY:?Set AGENT_API_KEY in your environment}
+      STAGING_PATH: /data/staging
+      UPLOAD_WORKERS: 4
     depends_on:
-      postgres:
-        condition: service_healthy
       server:
         condition: service_started
 
@@ -33,13 +32,14 @@ services:
     ports:
       - "8080:8080"        # Web UI + API — expose to internal network only
     volumes:
-      - ./data/received:/data/received   # shared with agent for local storage
+      - ./data/received:/data/received   # local storage backend (if used)
     environment:
       DATABASE_URL: postgresql://dicom:changeme@postgres:5432/dicom_archive
       STORAGE_BACKEND: local
       LOCAL_STORAGE_PATH: /data/received
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8080
+      AGENT_API_KEY: ${AGENT_API_KEY:?Set AGENT_API_KEY in your environment}
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,8 +54,7 @@ services:
       POSTGRES_PASSWORD: changeme
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # No published port — only accessible to the server container
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dicom -d dicom_archive"]
       interval: 5s

@@ -80,6 +80,7 @@ public class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options) : DbCo
             e.Property(i => i.ReceivedAt).HasColumnName("received_at");
             e.Property(i => i.SendingAe).HasColumnName("sending_ae");
             e.Property(i => i.ReceivingAe).HasColumnName("receiving_ae");
+            e.Property(i => i.Status).HasColumnName("status");
             e.HasOne(i => i.Series).WithMany(s => s.Instances).HasForeignKey(i => i.SeriesId);
         });
 

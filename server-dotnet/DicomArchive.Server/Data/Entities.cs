@@ -62,6 +62,7 @@ public class Instance
     public DateTime? ReceivedAt { get; set; }
     public string? SendingAe { get; set; }
     public string? ReceivingAe { get; set; }
+    public string Status { get; set; } = "stored";
 
     public Series Series { get; set; } = null!;
 }

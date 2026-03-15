@@ -1,9 +1,8 @@
 namespace DicomArchive.Server.Data;
 
-// InternalEndpoints
+// IngestEndpoints
 record AgentRegistration(string AeTitle, string Host, string? StorageBackend, string? Version);
 record AgentHeartbeat(string AeTitle, long InstancesDelta);
-record IngestNotification(int InstanceId, string? InstanceUid, string? Modality, string? SendingAe, string? ReceivingAe, string? BodyPart);
 
 // AgentEndpoints
 record AgentUpdate(string? Description, bool? Enabled);

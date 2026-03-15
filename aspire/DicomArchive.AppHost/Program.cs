@@ -1,5 +1,9 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
+// ── Shared secret for agent ↔ server auth ───────────────────────────────────
+// In production, use a proper secret store. For local dev, generate one.
+var agentApiKey = builder.AddParameter("agent-api-key", secret: true);
+
 // ── Postgres ──────────────────────────────────────────────────────────────────
 var postgres = builder.AddPostgres("postgres")
     .WithPgAdmin()
@@ -24,29 +28,25 @@ var server = builder.AddProject<Projects.DicomArchive_Server>("dicom-server")
     .WithReference(seq)
     .WithEnvironment("STORAGE_BACKEND",  "azure")
     .WithEnvironment("AZURE_CONTAINER",  "dicom-files")
+    .WithEnvironment("AGENT_API_KEY",    agentApiKey)
     .WithHttpEndpoint(port: 8080, name: "web");
 
 // ── Python Ingest Agent ───────────────────────────────────────────────────────
-// WithReference(postgres) injects ConnectionStrings__dicom-archive in ADO.NET
-// format (Host=...;Database=...;Username=...;Password=...).
-// The Python agent reads this and converts it to a psycopg2 URL — see database.py.
+// The agent has NO database access and NO cloud storage credentials.
+// It communicates with the server via the 3-step ingest handshake and
+// uploads files directly to blob storage using pre-signed URLs from the server.
 builder.AddDockerfile("dicom-agent", "../../agent")
-    .WithReference(postgres)
-    .WaitFor(postgres)
+    .WaitFor(server)
     .WaitFor(storage)
-    .WithEnvironment("STORAGE_BACKEND",    "azure")
-    .WithEnvironment("AZURE_CONTAINER",    "dicom-files")
-    .WithEnvironment(ctx =>
-    {
-        ctx.EnvironmentVariables["AZURE_STORAGE_CONNECTION_STRING"] =
-            blobs.Resource.ConnectionStringExpression;
-    })
     .WithEnvironment("AE_TITLE",           "ARCHIVE_SCP")
     .WithEnvironment("LISTEN_PORT",        "11112")
-    .WithEnvironment("ROUTER_URL",         server.GetEndpoint("web"))
+    .WithEnvironment("SERVER_URL",         server.GetEndpoint("web"))
+    .WithEnvironment("AGENT_API_KEY",      agentApiKey)
+    .WithEnvironment("UPLOAD_WORKERS",     "4")
+    .WithEnvironment("STAGING_PATH",       "/data/staging")
     .WithEnvironment("SEQ_URL",            seq.GetEndpoint("http"))
+    .WithBindMount("../../data/staging",    "/data/staging")
     .WithBindMount("../../data/quarantine", "/data/quarantine")
-    .WithEndpoint(port: 11112, targetPort: 11112, scheme: "tcp", name: "dicom")
-    .WaitFor(server);
+    .WithEndpoint(port: 11112, targetPort: 11112, scheme: "tcp", name: "dicom");
 
 builder.Build().Run();

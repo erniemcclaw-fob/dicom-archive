@@ -1,7 +1,9 @@
 using System.Text.Json;
 using DicomArchive.Server.Data;
 using DicomArchive.Server.Endpoints;
+using DicomArchive.Server.Middleware;
 using DicomArchive.Server.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,6 +26,17 @@ builder.AddServiceDefaults();
 builder.AddNpgsqlDbContext<ArchiveDbContext>("dicom-archive");
 builder.Services.AddDbContextFactory<ArchiveDbContext>(lifetime: ServiceLifetime.Scoped);
 
+// ── Authentication ────────────────────────────────────────────────────────────
+builder.Services
+    .AddAuthentication(ApiKeyAuthHandler.SchemeName)
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthHandler>(
+        ApiKeyAuthHandler.SchemeName, _ => { });
+
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("AgentPolicy", policy =>
+        policy.RequireAuthenticatedUser()
+              .AddAuthenticationSchemes(ApiKeyAuthHandler.SchemeName));
+
 // ── Application services ──────────────────────────────────────────────────────
 builder.Services.AddScoped<RouterService>();
 builder.Services.AddScoped<StorageService>();
@@ -43,6 +56,8 @@ app.UseCors();
 app.UseDefaultFiles();
 app.UseStaticFiles();   // serves wwwroot/index.html
 app.MapDefaultEndpoints(); // Aspire health + liveness probes
+app.UseAuthentication();
+app.UseAuthorization();
 
 // ── Schema initialization ─────────────────────────────────────────────────────
 // Run DDL on startup so the .NET server can work with a fresh Aspire Postgres
@@ -58,7 +73,7 @@ StudyEndpoints.Map(app);
 DestinationEndpoints.Map(app);
 RuleEndpoints.Map(app);
 AgentEndpoints.Map(app);
-InternalEndpoints.Map(app);
+IngestEndpoints.Map(app);
 WadoEndpoints.Map(app);
 
 app.Run();
