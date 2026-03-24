@@ -137,6 +137,18 @@ public static class SchemaInitializer
             ALTER TABLE instances ADD COLUMN status TEXT NOT NULL DEFAULT 'stored';
           END IF;
         END $$;
+
+        -- Trigram extension + indexes for fast ILIKE searches
+        CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+        CREATE INDEX IF NOT EXISTS idx_patients_name_trgm
+            ON patients USING gin (name gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS idx_patients_pid_trgm
+            ON patients USING gin (patient_id gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS idx_exams_accession_trgm
+            ON exams USING gin (accession gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS idx_exams_description_trgm
+            ON exams USING gin (description gin_trgm_ops);
         """;
 
     public static async Task RunAsync(IServiceProvider services, ILogger logger)

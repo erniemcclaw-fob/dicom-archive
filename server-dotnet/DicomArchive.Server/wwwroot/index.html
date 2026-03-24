@@ -557,7 +557,7 @@ async function renderStudyList(filters = {}) {
 
   const html = `
     <div class="search-bar mb-4">
-      <input type="text" id="srchPatient" placeholder="Patient ID / MRN" style="max-width:200px">
+      <input type="text" id="srchText" placeholder="Name, MRN, Accession, Description" style="max-width:280px">
       <select id="srchModality" style="max-width:140px">
         <option value="">All modalities</option>
         <option value="MG">MG — Mammography</option>
@@ -568,21 +568,19 @@ async function renderStudyList(filters = {}) {
       </select>
       <input type="date" id="srchFrom" style="max-width:150px">
       <input type="date" id="srchTo"   style="max-width:150px">
-      <button class="btn btn-primary" onclick="applyStudyFilters()">Search</button>
+      <button class="btn btn-primary" id="srchBtn" onclick="applyStudyFilters()">Search</button>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Date</th><th>Patient</th><th>Description</th><th>Modality</th><th>Series</th><th>Images</th><th>Accession</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Patient</th><th>MRN</th><th>Description</th><th>Modality</th><th>Series</th><th>Images</th><th>Accession</th><th></th></tr></thead>
         <tbody>
         ${studies.length === 0
-          ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted)">No studies found</td></tr>`
+          ? `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">No studies found</td></tr>`
           : studies.map(s => `
             <tr onclick="openStudy('${s.study_uid}', '${esc(s.patient_name||s.patient_id)}', '${s.study_date||''}')">
               <td class="font-mono">${s.study_date || '—'}</td>
-              <td>
-                <div style="font-weight:500">${esc(s.patient_name||'—')}</div>
-                <div class="font-mono text-muted">${s.patient_id}</div>
-              </td>
+              <td style="font-weight:500">${esc(s.patient_name||'—')}</td>
+              <td class="font-mono">${s.patient_id||'—'}</td>
               <td>${esc(s.description||'—')}</td>
               <td><span class="badge badge-blue">${s.modality||'—'}</span></td>
               <td>${s.series_count}</td>
@@ -603,15 +601,29 @@ async function renderStudyList(filters = {}) {
       </table>
     </div>`;
   view.innerHTML = html;
+  const hasFilter = Object.values(filters).some(v => v);
+  const btn = document.getElementById('srchBtn');
+  if (btn) btn.textContent = hasFilter ? 'Clear' : 'Search';
 }
 
 function applyStudyFilters() {
-  renderStudyList({
-    patient_id: document.getElementById('srchPatient')?.value || '',
+  const btn = document.getElementById('srchBtn');
+  if (btn && btn.textContent === 'Clear') {
+    const t = document.getElementById('srchText');     if (t) t.value = '';
+    const m = document.getElementById('srchModality'); if (m) m.value = '';
+    const f = document.getElementById('srchFrom');     if (f) f.value = '';
+    const to = document.getElementById('srchTo');      if (to) to.value = '';
+    renderStudyList({});
+    return;
+  }
+  const filters = {
+    search:     document.getElementById('srchText')?.value || '',
     modality:   document.getElementById('srchModality')?.value || '',
     date_from:  document.getElementById('srchFrom')?.value || '',
     date_to:    document.getElementById('srchTo')?.value || '',
-  });
+  };
+  const hasFilter = Object.values(filters).some(v => v);
+  renderStudyList(hasFilter ? filters : {});
 }
 
 function routeStudyFromRow(studyUid) {

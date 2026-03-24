@@ -18,7 +18,7 @@ public static class StudyEndpoints
 
     static async Task<IResult> ListStudies(
         ArchiveDbContext db,
-        string? patient_id = null, string? modality = null,
+        string? search = null, string? modality = null,
         string? date_from = null, string? date_to = null,
         int limit = 100, int offset = 0)
     {
@@ -27,8 +27,16 @@ public static class StudyEndpoints
             .Include(e => e.SeriesList).ThenInclude(s => s.Instances)
             .AsQueryable();
 
-        if (!string.IsNullOrEmpty(patient_id))
-            q = q.Where(e => e.Patient.PatientId.Contains(patient_id));
+        if (!string.IsNullOrEmpty(search))
+        {
+            var pattern = $"%{search}%";
+            q = q.Where(e =>
+                EF.Functions.ILike(e.Patient.PatientId, pattern) ||
+                (e.Patient.Name != null && EF.Functions.ILike(e.Patient.Name, pattern)) ||
+                (e.Accession != null && EF.Functions.ILike(e.Accession, pattern)) ||
+                (e.Description != null && EF.Functions.ILike(e.Description, pattern))
+            );
+        }
         if (!string.IsNullOrEmpty(modality))
             q = q.Where(e => e.Modality == modality.ToUpper());
         if (DateOnly.TryParse(date_from, out var df))
